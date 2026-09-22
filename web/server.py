@@ -159,7 +159,8 @@ def flatten_activity(records):
     c14 = (now - timedelta(days=14)).strftime("%Y-%m-%dT00:00:00")
     c30 = (now - timedelta(days=30)).strftime("%Y-%m-%dT00:00:00")
 
-    by_month, by_cat, recent, alerts = {}, {}, [], []
+    by_month, by_cat, recent = {}, {}, []
+    alerts = {}  # opp whatId -> aggregate of dead-deal activity (last 7d)
     l14 = {}  # account -> {minutes, events, opps{name->{...}}}
     total_min = last30_min = last30_n = 0
     for e in records:
@@ -188,9 +189,14 @@ def flatten_activity(records):
             m["minutes"] += mins
             m[cat] += mins
         if dead and c7 <= dt <= end:
-            alerts.append({"subject": e.get("Subject"), "date": dt, "mins": mins, "opp": opp,
-                           "account": acct, "amount": amt, "close": close, "stage": stage,
-                           "whatId": e.get("WhatId")})
+            wid = e.get("WhatId")
+            g = alerts.setdefault(wid, {"whatId": wid, "opp": opp, "account": acct, "amount": amt,
+                                        "close": close, "stage": stage, "events": 0, "minutes": 0,
+                                        "latestDate": "", "latestSubject": None})
+            g["events"] += 1
+            g["minutes"] += mins
+            if dt >= g["latestDate"]:
+                g["latestDate"], g["latestSubject"] = dt, e.get("Subject")
         if cat == "customer" and c14 <= dt <= end:
             a = l14.setdefault(acct or "—", {"account": acct or "—", "minutes": 0, "events": 0, "_opps": {}})
             a["minutes"] += mins
@@ -218,7 +224,7 @@ def flatten_activity(records):
         "last30VsAvgPct": round((last30_min - avg_monthly) / avg_monthly * 100) if avg_monthly else None,
         "byCategory": sorted(by_cat.values(), key=lambda x: -x["minutes"]),
         "byMonth": sorted(by_month.values(), key=lambda x: x["month"]),
-        "alerts": sorted(alerts, key=lambda x: x["date"], reverse=True),
+        "alerts": sorted(alerts.values(), key=lambda x: -x["minutes"]),
         "last14ByAccount": last14,
         "recent": recent,
     }

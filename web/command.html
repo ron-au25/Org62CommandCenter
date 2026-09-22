@@ -380,7 +380,7 @@ function viewActivity(){
   const alertRows=alerts.length?alerts.map(x=>`<div class="alertitem">
       <div>${oppLinkId(x.whatId,x.opp)} <span class="pill dead">${esc(x.stage)||"Dead"}</span></div>
       <div class="meta">${esc(x.account)||"—"} · ${fmt(x.amount)} · close ${fmtDate(x.close)}</div>
-      <div class="meta">${fmtDate(x.date)} · ${esc(x.subject)||"(no subject)"} · ${x.mins} min</div></div>`).join("")
+      <div class="meta"><b>${(x.minutes/60).toFixed(1)} h</b> across ${x.events} event${x.events==1?"":"s"} · latest ${fmtDate(x.latestDate)}: ${esc(x.latestSubject)||"(no subject)"}</div></div>`).join("")
     : `<div class="muted">No activity logged against dead opportunities in the last 7 days. ✅</div>`;
   const alertCard=`<div class="card alert"><h3>⚠ Dead-deal activity · last 7 days (${alerts.length})</h3>${alertRows}</div>`;
   // Coverage gaps — business opps in my active accounts where I'm not the contributor
