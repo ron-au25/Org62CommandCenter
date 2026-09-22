@@ -128,6 +128,25 @@
   .scroll { max-height:360px; overflow:auto; border:1px solid var(--line); border-radius:8px; }
   .actitem { font-size:12px; padding:6px 0; border-bottom:1px dashed var(--line); }
   .actitem .meta { color:var(--dim); font-size:11px; }
+  /* activity calendar */
+  .calbar { display:flex; align-items:center; gap:12px; margin-bottom:10px; }
+  .calbar b { font-size:14px; min-width:130px; text-align:center; }
+  .calbar button { background:var(--chip); color:var(--ink); border:1px solid var(--line); border-radius:7px;
+                   width:30px; height:28px; cursor:pointer; font-size:15px; }
+  .calbar button:hover { border-color:var(--accent2); }
+  .cal { display:grid; grid-template-columns:repeat(7,1fr); gap:4px; }
+  .cal .dow { text-align:center; font-size:10.5px; text-transform:uppercase; letter-spacing:.04em; color:var(--mut); padding:4px 0; }
+  .cal .cell { min-height:92px; background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:5px 6px; overflow:hidden; }
+  .cal .cell.empty { background:transparent; border:none; }
+  .cal .cell.today { border-color:var(--accent2); box-shadow:inset 0 0 0 1px var(--accent2); }
+  .cal .dnum { font-size:11px; color:var(--mut); font-weight:700; display:flex; justify-content:space-between; margin-bottom:3px; }
+  .cal .dnum .dmin { color:var(--dim); font-weight:600; }
+  .cal .ev { font-size:10.5px; line-height:1.3; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+             padding:1px 4px; border-radius:4px; margin-bottom:2px; border-left:3px solid var(--dim); background:var(--chip); }
+  .cal .ev a { color:var(--ink); }
+  .cal .ev b { display:none; }
+  .acctlegend { display:flex; flex-wrap:wrap; gap:8px 14px; margin-top:12px; font-size:11px; color:var(--mut); }
+  .acctlegend span b { display:inline-block; width:9px; height:9px; border-radius:2px; margin-right:5px; }
   .card.alert { border-color:rgba(255,92,92,.4); }
   .card.alert h3 { color:var(--bad); }
   .alertitem { font-size:12.5px; padding:8px 0; border-bottom:1px dashed var(--line); }
@@ -188,6 +207,14 @@ const CATS = { customer:{lab:"Customer", col:"var(--good)"},
                marketing:{lab:"Marketing", col:"var(--accent2)"},
                noncustomer:{lab:"Non-customer", col:"var(--warn)"} };
 const catTag = c => `<span class="ctag" style="background:${(CATS[c]||{}).col||'var(--dim)'}22;color:${(CATS[c]||{}).col||'var(--mut)'}">${(CATS[c]||{}).lab||c}</span>`;
+// distinct palette for accounts (separate from the category colors)
+const ACCT_PALETTE=["#c792ea","#f78c6c","#42c9c2","#f06292","#82aaff","#c3e88d","#ffcb6b",
+  "#e57373","#7e93f0","#4db6ac","#ba68c8","#ffab91","#9ccc65","#26c6da","#d4a5ff","#ff8a65"];
+function acctColor(name){
+  if(!name) return "var(--dim)";
+  let h=0; for(let i=0;i<name.length;i++) h=(h*31+name.charCodeAt(i))>>>0;
+  return ACCT_PALETTE[h%ACCT_PALETTE.length];
+}
 function pctMeta(a){
   if(!a || a.last30VsAvgPct==null) return (a?.last30Events||0)+" events";
   const p=a.last30VsAvgPct, arrow=p>=0?"▲":"▼", col=p>=0?"var(--good)":"var(--bad)";
@@ -195,7 +222,7 @@ function pctMeta(a){
 }
 
 let DATA = { forecast:null, whitespace:null, activity:null };
-let state = { tab:"open", q:"", sortKey:null, sortDir:-1, showDead:false };
+let state = { tab:"open", q:"", sortKey:null, sortDir:-1, showDead:false, actMonth:null };
 
 // live (non-dead) row helpers -------------------------------------------------
 const liveRows   = () => ((DATA.forecast?.rows)||[]).filter(r=>!r.isDead);
@@ -410,16 +437,51 @@ function viewActivity(){
   }).join("") : `<tr><td colspan="5" class="muted">No customer activity in the last 14 days.</td></tr>`;
   const l14Card=`<div class="card"><h3>Time spent by account · last 14 days</h3>
     <table class="ptable"><tr><th>Account</th><th class="num">Time</th><th>Top opportunity</th><th class="num">Amount</th><th class="close">Close</th></tr>${l14Rows}</table></div>`;
-  const recent=(a.recent||[]).slice(0,60).map(e=>`<div class="actitem">
-      <div>${catTag(e.category)} ${e.dead?`<span class="pill dead">Dead</span> `:""}${esc(e.subject)||"(no subject)"} ${e.whatId?`<a href="https://org62.lightning.force.com/lightning/r/${esc(e.whatId)}/view" target="_blank" rel="noopener">↗</a>`:""}</div>
-      <div class="meta">${fmtDate(e.date)} · ${esc(e.type)} · ${e.mins} min${e.what?` · ${esc(e.what)}`:""}</div></div>`).join("");
   return `<div class="ttrack">${summary}${catCards}</div>
     <div class="card"><h3>Time spent by month — by category</h3><div class="months">${bars}</div>
       <div class="legend">${legend}</div></div>
     ${alertCard}
     ${gapCard}
     ${l14Card}
-    <div class="sect"><h4>Recent activity</h4>${recent}</div>`;
+    <div class="sect"><h4>Activity calendar</h4>${calendarHtml(a.recent||[])}</div>`;
+}
+
+// month calendar of recent activity ------------------------------------------
+function calendarHtml(events){
+  if(!state.actMonth){ const t=new Date(); state.actMonth=t.getFullYear()+"-"+String(t.getMonth()+1).padStart(2,"0"); }
+  const [Y,M]=state.actMonth.split("-").map(Number);
+  const byDay={}; let monMin=0, monN=0;
+  events.forEach(e=>{ const d=(e.date||"").slice(0,10); if(d.slice(0,7)!==state.actMonth) return;
+    (byDay[d]=byDay[d]||[]).push(e); monMin+=e.mins||0; monN++; });
+  const first=new Date(Y,M-1,1), startDow=first.getDay(), days=new Date(Y,M,0).getDate();
+  const todayStr=(()=>{const t=new Date();return t.getFullYear()+"-"+String(t.getMonth()+1).padStart(2,"0")+"-"+String(t.getDate()).padStart(2,"0");})();
+  const dow=["Sun","Mon","Tue","Wed","Thu","Fri","Sat"].map(d=>`<div class="dow">${d}</div>`).join("");
+  let cells="";
+  for(let i=0;i<startDow;i++) cells+=`<div class="cell empty"></div>`;
+  for(let d=1;d<=days;d++){
+    const ds=`${Y}-${String(M).padStart(2,"0")}-${String(d).padStart(2,"0")}`;
+    const evs=(byDay[ds]||[]).sort((a,b)=>(a.date||"").localeCompare(b.date||""));
+    const dm=evs.reduce((s,e)=>s+(e.mins||0),0);
+    const chips=evs.map(e=>`<div class="ev" style="border-left-color:${acctColor(e.account)}" title="${e.account?esc(e.account)+' · ':''}${esc(e.subject)} · ${e.mins}m">
+        ${e.whatId?`<a href="https://org62.lightning.force.com/lightning/r/${esc(e.whatId)}/view" target="_blank" rel="noopener">${esc(e.subject)||"(untitled)"}</a>`:esc(e.subject)||"(untitled)"}</div>`).join("");
+    cells+=`<div class="cell${ds===todayStr?' today':''}">
+      <div class="dnum">${d}${dm?`<span class="dmin">${(dm/60).toFixed(1)}h</span>`:""}</div>${chips}</div>`;
+  }
+  // account legend for accounts appearing this month
+  const accts=[...new Set(events.filter(e=>(e.date||"").slice(0,7)===state.actMonth && e.account).map(e=>e.account))].sort();
+  const legend=accts.map(n=>`<span><b style="background:${acctColor(n)}"></b>${esc(n)}</span>`).join("");
+  return `<div class="calbar">
+      <button id="cal-prev">‹</button>
+      <b>${MONTHS[M-1]} ${Y}</b>
+      <button id="cal-next">›</button>
+      <span class="muted">${monN} events · ${(monMin/60).toFixed(1)} h</span></div>
+    <div class="cal">${dow}${cells}</div>
+    ${legend?`<div class="acctlegend">${legend}</div>`:""}`;
+}
+function shiftMonth(delta){
+  let [Y,M]=state.actMonth.split("-").map(Number); M+=delta;
+  if(M<1){M=12;Y--;} if(M>12){M=1;Y++;}
+  state.actMonth=Y+"-"+String(M).padStart(2,"0");
 }
 function oppLinkId(id,name){
   const nm=esc(name||"—");
@@ -506,6 +568,9 @@ function render(){
   });
   const dt=document.getElementById("deadtog");
   if(dt) dt.onchange=e=>{ state.showDead=e.target.checked; render(); };
+  const cp=document.getElementById("cal-prev"), cn=document.getElementById("cal-next");
+  if(cp) cp.onclick=()=>{ shiftMonth(-1); render(); };
+  if(cn) cn.onclick=()=>{ shiftMonth(1); render(); };
 }
 
 document.querySelectorAll(".tab").forEach(t=>t.onclick=()=>{
