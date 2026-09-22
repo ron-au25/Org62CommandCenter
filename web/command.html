@@ -444,12 +444,13 @@ function viewActivity(){
     return `<tr>
       <td><span class="adot" style="background:${acctColor(x.account)}"></span>${esc(x.account)||"—"}</td>
       <td class="num amt">${hrs1(x.minutes)} h</td>
+      <td class="num">${x.events||0}</td>
       <td>${oppLinkId(top.whatId,top.name)}${more>0?` <span class="muted">+${more}</span>`:""}${top.dead?` <span class="pill dead">Dead</span>`:""}</td>
       <td class="num amt">${fmt(top.amount)}</td>
       <td class="close">${fmtDate(top.close)}</td></tr>`;
-  }).join("") : `<tr><td colspan="5" class="muted">No customer activity in the last 14 days.</td></tr>`;
+  }).join("") : `<tr><td colspan="6" class="muted">No customer activity in the last 14 days.</td></tr>`;
   const l14Card=`<div class="card"><h3>Time spent by account · last 14 days</h3>
-    <table class="ptable"><tr><th>Account</th><th class="num">Time</th><th>Top opportunity</th><th class="num">Amount</th><th class="close">Close</th></tr>${l14Rows}</table></div>`;
+    <table class="ptable"><tr><th>Account</th><th class="num">Time</th><th class="num">Activities</th><th>Top opportunity</th><th class="num">Amount</th><th class="close">Close</th></tr>${l14Rows}</table></div>`;
   return `<div class="ttrack">${summary}${catCards}</div>
     <div class="card"><h3>Time spent by month — by category</h3><div class="months">${bars}</div>
       <div class="legend">${legend}</div></div>
