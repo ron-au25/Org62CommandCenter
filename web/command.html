@@ -96,8 +96,12 @@
   /* activity */
   .months { display:flex; align-items:flex-end; gap:6px; height:150px; padding:12px 0 0; }
   .months .m { flex:1; display:flex; flex-direction:column; align-items:center; gap:5px; justify-content:flex-end; }
-  .months .m i { width:70%; background:linear-gradient(180deg,var(--accent2),var(--accent)); border-radius:4px 4px 0 0; display:block; }
+  .months .m .stack { width:70%; display:flex; flex-direction:column-reverse; border-radius:4px 4px 0 0; overflow:hidden; }
+  .months .m .stack i { display:block; width:100%; }
   .months .m span { font-size:10px; color:var(--mut); }
+  .ctag { font-size:10px; font-weight:700; padding:1px 6px; border-radius:5px; }
+  .legend { display:flex; gap:14px; margin-top:10px; font-size:11.5px; color:var(--mut); flex-wrap:wrap; }
+  .legend b { display:inline-block; width:9px; height:9px; border-radius:2px; margin-right:5px; }
 
   /* detail drawer */
   #scrim { position:fixed; inset:0; background:rgba(0,0,0,.5); z-index:30; display:none; }
@@ -172,6 +176,16 @@ const isPast = d => d && new Date(d) < new Date(new Date().toDateString());
 const CAT = c => (c||"").toLowerCase();
 const hrs = m => (m/60).toFixed(0);
 const esc = s => (s==null?"":String(s)).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+// activity categories
+const CATS = { customer:{lab:"Customer", col:"var(--good)"},
+               marketing:{lab:"Marketing", col:"var(--accent2)"},
+               noncustomer:{lab:"Non-customer", col:"var(--warn)"} };
+const catTag = c => `<span class="ctag" style="background:${(CATS[c]||{}).col||'var(--dim)'}22;color:${(CATS[c]||{}).col||'var(--mut)'}">${(CATS[c]||{}).lab||c}</span>`;
+function pctMeta(a){
+  if(!a || a.last30VsAvgPct==null) return (a?.last30Events||0)+" events";
+  const p=a.last30VsAvgPct, arrow=p>=0?"▲":"▼", col=p>=0?"var(--good)":"var(--bad)";
+  return `<span style="color:${col}">${arrow} ${Math.abs(p)}%</span> vs avg month · ${a.last30Events} events`;
+}
 
 let DATA = { forecast:null, whitespace:null, activity:null };
 let state = { tab:"open", q:"", sortKey:null, sortDir:-1, showDead:false };
@@ -222,7 +236,7 @@ function renderKPIs(){
     {lab:"Open Pipeline",     val:fmtK(pipeline),  meta:open.length+" open opps"},
     {lab:"Pipeline at Risk",  val:fmtK(atRisk),    meta:risk.length+" flagged", cls:"risk"},
     {lab:"New Business (ANZ)",val:fmtK(DATA.whitespace?.total), meta:(DATA.whitespace?.count||0)+" white-space opps"},
-    {lab:"Time Spent (FY27)", val:act.totalMinutes!=null?hrs(act.totalMinutes)+" h":"—", meta:(act.totalEvents||0)+" events"},
+    {lab:"Time Spent (30d)",  val:act.last30Minutes!=null?hrs(act.last30Minutes)+" h":"—", meta:pctMeta(act), cls:"time"},
     {lab:"Dead / Excluded",   val:String(((DATA.forecast?.rows)||[]).filter(r=>r.isDead).length), meta:"omitted from KPIs"},
   ];
   document.getElementById("kpis").innerHTML=kpis.map(k=>`
@@ -326,29 +340,46 @@ function viewCoach(){
 
 function viewActivity(){
   const a=DATA.activity; if(!a) return `<div class="note">No activity data.</div>`;
+  const catBy=Object.fromEntries((a.byCategory||[]).map(c=>[c.category,c]));
+  // last 30d summary + category cards
+  const pct=a.last30VsAvgPct;
+  const pctStr=pct==null?"":`<span style="color:${pct>=0?'var(--good)':'var(--bad)'}">${pct>=0?'▲':'▼'} ${Math.abs(pct)}%</span> vs avg month (${hrs(a.avgMonthlyMinutes)} h)`;
+  const summary=`<div class="card"><h3>Last 30 days</h3>
+      <div class="val" style="font-size:26px;font-weight:750">${hrs(a.last30Minutes)} h</div>
+      <div class="row"><span class="k">Events</span><b>${a.last30Events}</b></div>
+      <div class="row"><span class="k">vs avg month</span><b>${pctStr||"—"}</b></div>
+      <div class="row"><span class="k">FY total</span><b>${hrs(a.totalMinutes)} h · ${a.totalEvents} ev</b></div></div>`;
+  const catCards=Object.keys(CATS).map(k=>{
+    const c=catBy[k]||{count:0,minutes:0};
+    const p=a.totalMinutes?Math.round(c.minutes/a.totalMinutes*100):0;
+    return `<div class="card"><h3>${catTag(k)}</h3>
+      <div class="row"><span class="k">Events</span><b>${c.count}</b></div>
+      <div class="row"><span class="k">Time spent</span><b>${hrs(c.minutes)} h</b></div>
+      <div class="row"><span class="k">% of FY time</span><b>${p}%</b></div>
+      <div class="vbar"><i style="width:${p}%;background:${CATS[k].col}"></i></div></div>`;
+  }).join("");
+  // stacked monthly bars (customer / marketing / non-customer)
   const maxM=Math.max(1,...(a.byMonth||[]).map(m=>m.minutes));
   const bars=(a.byMonth||[]).map(m=>{
-    const h=Math.round(m.minutes/maxM*120);
     const [y,mo]=m.month.split("-");
-    return `<div class="m" title="${m.count} events · ${hrs(m.minutes)}h">
-      <i style="height:${h}px"></i><span>${MONTHS[+mo-1]} ${y.slice(-2)}</span></div>`;
+    const seg=k=>{const h=Math.round((m[k]||0)/maxM*120);return h>0?`<i style="height:${h}px;background:${CATS[k].col}"></i>`:"";};
+    return `<div class="m" title="${m.count} events · ${hrs(m.minutes)}h — Cust ${hrs(m.customer)}h / Mktg ${hrs(m.marketing)}h / Non ${hrs(m.noncustomer)}h">
+      <div class="stack" style="height:${Math.round(m.minutes/maxM*120)}px">${seg("customer")}${seg("marketing")}${seg("noncustomer")}</div>
+      <span>${MONTHS[+mo-1]} ${y.slice(-2)}</span></div>`;
   }).join("");
+  const legend=Object.keys(CATS).map(k=>`<span><b style="background:${CATS[k].col}"></b>${CATS[k].lab}</span>`).join("");
   const typeCards=(a.byType||[]).map(t=>`
     <div class="card"><h3>${esc(t.type)}</h3>
       <div class="row"><span class="k">Events</span><b>${t.count}</b></div>
       <div class="row"><span class="k">Time spent</span><b>${hrs(t.minutes)} h</b></div>
-      <div class="row"><span class="k">Avg / event</span><b>${(t.minutes/(t.count||1)).toFixed(0)} min</b></div>
       <div class="vbar"><i style="width:${Math.round(t.minutes/a.totalMinutes*100)}%"></i></div></div>`).join("");
   const recent=(a.recent||[]).slice(0,60).map(e=>`<div class="actitem">
-      <div>${esc(e.subject)||"(no subject)"} ${e.whatId?`<a href="https://org62.lightning.force.com/lightning/r/${esc(e.whatId)}/view" target="_blank" rel="noopener">↗</a>`:""}</div>
+      <div>${catTag(e.category)} ${esc(e.subject)||"(no subject)"} ${e.whatId?`<a href="https://org62.lightning.force.com/lightning/r/${esc(e.whatId)}/view" target="_blank" rel="noopener">↗</a>`:""}</div>
       <div class="meta">${fmtDate(e.date)} · ${esc(e.type)} · ${e.mins} min${e.what?` · ${esc(e.what)}`:""}</div></div>`).join("");
-  return `<div class="ttrack">
-      <div class="card"><h3>Total time (FY27)</h3><div class="val" style="font-size:26px;font-weight:750">${hrs(a.totalMinutes)} h</div>
-        <div class="row"><span class="k">Events</span><b>${a.totalEvents}</b></div>
-        <div class="row"><span class="k">Avg / event</span><b>${(a.totalMinutes/(a.totalEvents||1)).toFixed(0)} min</b></div></div>
-      ${typeCards}
-    </div>
-    <div class="card"><h3>Time spent by month</h3><div class="months">${bars}</div></div>
+  return `<div class="ttrack">${summary}${catCards}</div>
+    <div class="card"><h3>Time spent by month — by category</h3><div class="months">${bars}</div>
+      <div class="legend">${legend}</div></div>
+    <div class="ttrack" style="margin-top:14px">${typeCards}</div>
     <div class="sect"><h4>Recent activity</h4>${recent}</div>`;
 }
 

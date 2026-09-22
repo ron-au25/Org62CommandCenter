@@ -133,8 +133,8 @@ class Org62:
         """
         uid = self.my_user_id()
         soql = (
-            "SELECT Id, Subject, RecordType.Name, DurationInMinutes, "
-            "ActivityDateTime, WhatId, What.Name "
+            "SELECT Id, Subject, Type, RecordType.Name, DurationInMinutes, "
+            "ActivityDateTime, WhatId, What.Name, What.Type "
             "FROM Event "
             f"WHERE OwnerId = '{uid}' AND ActivityDate = THIS_FISCAL_YEAR "
             "ORDER BY ActivityDateTime DESC"

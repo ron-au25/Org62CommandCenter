@@ -133,31 +133,67 @@ def flatten_whitespace(records):
     return rows
 
 
+def _event_category(e):
+    """customer = related to an Opportunity; marketing = Campaign-related or a
+    Marketing activity type; everything else = non-customer."""
+    wt = (e.get("What") or {}).get("Type") or ""
+    et = e.get("Type") or ""
+    if wt == "Opportunity":
+        return "customer"
+    if wt == "Campaign" or "marketing" in et.lower():
+        return "marketing"
+    return "noncustomer"
+
+
 def flatten_activity(records):
-    """Event rows → distribution + recent list for the Activity Log tab."""
-    by_type, by_month, recent = {}, {}, []
-    total_min = 0
+    """Event rows → categorized distribution + recent list for Activity Log.
+
+    Time-spent split by category (customer/marketing/non-customer) monthly and
+    overall; last-30-day total plus % vs the average FY month.
+    """
+    from datetime import datetime, timedelta, timezone
+
+    by_type, by_month, by_cat, recent = {}, {}, {}, []
+    total_min = last30_min = last30_n = 0
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=30)).strftime("%Y-%m-%dT%H:%M:%S")
     for e in records:
         rt = (e.get("RecordType") or {}).get("Name") or "—"
         mins = e.get("DurationInMinutes") or 0
         dt = e.get("ActivityDateTime") or ""
+        cat = _event_category(e)
         total_min += mins
+        if dt and dt >= cutoff:
+            last30_min += mins
+            last30_n += 1
         t = by_type.setdefault(rt, {"type": rt, "count": 0, "minutes": 0})
         t["count"] += 1
         t["minutes"] += mins
+        c = by_cat.setdefault(cat, {"category": cat, "count": 0, "minutes": 0})
+        c["count"] += 1
+        c["minutes"] += mins
         mon = dt[:7]
         if mon:
-            m = by_month.setdefault(mon, {"month": mon, "count": 0, "minutes": 0})
+            m = by_month.setdefault(mon, {"month": mon, "count": 0, "minutes": 0,
+                                          "customer": 0, "marketing": 0, "noncustomer": 0})
             m["count"] += 1
             m["minutes"] += mins
+            m[cat] += mins
         if len(recent) < 150:
             what = e.get("What") or {}
             recent.append({"subject": e.get("Subject"), "type": rt, "date": dt,
-                           "mins": mins, "what": what.get("Name"), "whatId": e.get("WhatId")})
+                           "mins": mins, "what": what.get("Name"),
+                           "whatId": e.get("WhatId"), "category": cat})
+    n_months = len(by_month) or 1
+    avg_monthly = round(total_min / n_months)
     return {
         "totalEvents": len(records),
         "totalMinutes": total_min,
+        "last30Minutes": last30_min,
+        "last30Events": last30_n,
+        "avgMonthlyMinutes": avg_monthly,
+        "last30VsAvgPct": round((last30_min - avg_monthly) / avg_monthly * 100) if avg_monthly else None,
         "byType": sorted(by_type.values(), key=lambda x: -x["minutes"]),
+        "byCategory": sorted(by_cat.values(), key=lambda x: -x["minutes"]),
         "byMonth": sorted(by_month.values(), key=lambda x: x["month"]),
         "recent": recent,
     }
