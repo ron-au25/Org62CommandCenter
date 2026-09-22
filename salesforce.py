@@ -187,6 +187,8 @@ class Org62:
         - "Field Service product" = an OpportunityLineItem whose Product2.Name
           contains "Field Service".
         - open + stages 02/03/04, closing between today and end of this FY.
+        - business only: Type in New Business / Add-On Business (skip
+          Renewal / SOW / Success Plan / Transfer / Upgrade).
         - whitespace = no Deal_Contribution__c with
           Opportunity_Role__c = 'Service Cloud FSL Specialist' (this is the
           real "deal contribution" object; OpportunityTeamMember has no such
@@ -201,6 +203,7 @@ class Org62:
             "WHERE IsClosed = false "
             "AND (StageName LIKE '02%' OR StageName LIKE '03%' OR StageName LIKE '04%') "
             "AND CloseDate >= TODAY AND CloseDate = THIS_FISCAL_YEAR "
+            "AND Type IN ('New Business','Add-On Business') "
             "AND Account.BillingCountry IN ('AU','NZ','Australia','New Zealand') "
             "AND Id IN (SELECT OpportunityId FROM OpportunityLineItem "
             "WHERE Product2.Name LIKE '%Field Service%') "
