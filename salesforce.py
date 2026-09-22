@@ -99,6 +99,27 @@ class Org62:
         )
         return self.query(soql)
 
+    def my_deals_fy(self):
+        """All my deals (open + closed) closing THIS fiscal year.
+
+        Same tagging as my_open_deals (OpportunityTeamMember, UserId indexed —
+        do NOT LIKE-scan this object). Drops the IsClosed filter so Closed
+        Won / Lost land in the Forecast + KPI views, and pulls the standard
+        forecast/coach fields (ForecastCategoryName, NextStep, IsWon) — all
+        standard Opportunity fields, no assumptions.
+        """
+        uid = self.my_user_id()
+        soql = (
+            "SELECT Opportunity.Name, Opportunity.StageName, Opportunity.CloseDate, "
+            "Opportunity.Amount, Opportunity.ForecastCategoryName, Opportunity.NextStep, "
+            "Opportunity.LastActivityDate, Opportunity.IsClosed, Opportunity.IsWon, "
+            "Opportunity.Account.Name, Opportunity.Owner.Name, TeamMemberRole "
+            "FROM OpportunityTeamMember "
+            f"WHERE UserId = '{uid}' AND Opportunity.CloseDate = THIS_FISCAL_YEAR "
+            "ORDER BY Opportunity.CloseDate ASC"
+        )
+        return self.query(soql)
+
     def anz_fsl_whitespace(self):
         """ANZ Field-Service opportunities with no FSL Specialist engaged.
 

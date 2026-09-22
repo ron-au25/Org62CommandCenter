@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Org62 Command Center</title>
+<style>
+  :root {
+    --bg:#0b0f17; --panel:#121826; --panel2:#0f1521; --line:#1e2637;
+    --ink:#e6ebf2; --mut:#8b97a8; --dim:#5c6a7e;
+    --accent:#2e8b57; --accent2:#4c9ffe; --good:#37c871; --warn:#ffb020; --bad:#ff5c5c;
+    --chip:#1a2436;
+  }
+  * { box-sizing:border-box; }
+  body { margin:0; font:13.5px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+         background:var(--bg); color:var(--ink); }
+  header { display:flex; align-items:center; gap:12px; padding:12px 20px; background:var(--panel2);
+           border-bottom:1px solid var(--line); position:sticky; top:0; z-index:5; }
+  header .logo { width:26px; height:26px; border-radius:7px; background:linear-gradient(135deg,var(--accent),var(--accent2));
+                 display:flex; align-items:center; justify-content:center; font-weight:800; color:#fff; }
+  header h1 { font-size:15px; margin:0; font-weight:700; letter-spacing:.2px; }
+  header .sub { color:var(--mut); font-size:11.5px; }
+  header .spacer { flex:1; }
+  .badge { font-size:10.5px; padding:3px 9px; border-radius:20px; font-weight:700; text-transform:uppercase; letter-spacing:.04em; }
+  .badge.live { background:rgba(55,200,113,.15); color:var(--good); }
+  .badge.snapshot { background:rgba(255,176,32,.15); color:var(--warn); }
+
+  /* KPI band */
+  .kpis { display:grid; grid-template-columns:repeat(6,1fr); gap:12px; padding:16px 20px 4px; }
+  .kpi { background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:12px 14px; min-height:78px; }
+  .kpi .lab { color:var(--mut); font-size:11px; text-transform:uppercase; letter-spacing:.05em; display:flex; gap:6px; align-items:center; }
+  .kpi .val { font-size:22px; font-weight:750; margin-top:6px; font-variant-numeric:tabular-nums; }
+  .kpi .meta { color:var(--dim); font-size:11px; margin-top:2px; }
+  .kpi.na .val { color:var(--dim); }
+  .tag { font-size:9px; background:var(--chip); color:var(--mut); border-radius:5px; padding:1px 5px; font-weight:700; }
+  .up { color:var(--good); } .down { color:var(--bad); }
+
+  /* tabs */
+  .tabs { display:flex; gap:4px; padding:12px 20px 0; border-bottom:1px solid var(--line); flex-wrap:wrap; }
+  .tab { padding:9px 15px; cursor:pointer; color:var(--mut); border-bottom:2px solid transparent; font-weight:650; font-size:13px; }
+  .tab.active { color:var(--ink); border-bottom-color:var(--accent2); }
+  main { padding:18px 20px 40px; }
+
+  .bar { display:flex; align-items:center; gap:12px; margin-bottom:14px; flex-wrap:wrap; }
+  input[type=search] { flex:1; min-width:200px; padding:9px 12px; background:var(--panel); border:1px solid var(--line);
+                       border-radius:8px; font-size:13px; color:var(--ink); }
+  input[type=search]::placeholder { color:var(--dim); }
+
+  /* forecast talk-track tiles */
+  .ttrack { display:grid; grid-template-columns:repeat(auto-fit,minmax(230px,1fr)); gap:12px; margin-bottom:20px; }
+  .card { background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:14px; }
+  .card h3 { margin:0 0 10px; font-size:13px; font-weight:700; }
+  .card .row { display:flex; justify-content:space-between; padding:4px 0; border-bottom:1px dashed var(--line); font-size:12.5px; }
+  .card .row:last-child { border-bottom:none; }
+  .card .row b { font-variant-numeric:tabular-nums; }
+  .card .row .k { color:var(--mut); }
+  .vbar { height:6px; background:var(--chip); border-radius:4px; margin-top:10px; overflow:hidden; }
+  .vbar > i { display:block; height:100%; background:linear-gradient(90deg,var(--accent),var(--accent2)); }
+
+  table { width:100%; border-collapse:collapse; background:var(--panel); border:1px solid var(--line);
+          border-radius:12px; overflow:hidden; }
+  th, td { text-align:left; padding:9px 12px; border-bottom:1px solid var(--line); vertical-align:top; }
+  th { background:var(--panel2); font-size:11px; color:var(--mut); text-transform:uppercase; letter-spacing:.04em;
+       cursor:pointer; user-select:none; white-space:nowrap; }
+  th.num, td.num { text-align:right; white-space:nowrap; }
+  tr:hover td { background:rgba(76,159,254,.05); }
+  .amt { font-variant-numeric:tabular-nums; font-weight:650; }
+  .chip { background:var(--chip); color:var(--accent2); border-radius:6px; padding:1px 7px; font-size:11.5px; font-weight:650; }
+  .pill { border-radius:6px; padding:1px 7px; font-size:11px; font-weight:700; }
+  .pill.commit { background:rgba(55,200,113,.15); color:var(--good); }
+  .pill.best   { background:rgba(76,159,254,.15); color:var(--accent2); }
+  .pill.pipe   { background:rgba(139,151,168,.15); color:var(--mut); }
+  .pill.closed { background:rgba(46,139,87,.2); color:var(--good); }
+  .ctry { font-weight:700; color:var(--accent2); }
+  .flag { font-size:10.5px; font-weight:700; padding:1px 6px; border-radius:5px; margin-right:4px; display:inline-block; }
+  .flag.stale { background:rgba(255,92,92,.15); color:var(--bad); }
+  .flag.nns   { background:rgba(255,176,32,.15); color:var(--warn); }
+  .flag.noamt { background:rgba(139,151,168,.15); color:var(--mut); }
+  .flag.past  { background:rgba(255,92,92,.2); color:var(--bad); }
+  .muted { color:var(--dim); }
+  .err { background:rgba(255,176,32,.1); color:var(--warn); border:1px solid rgba(255,176,32,.3);
+         padding:8px 12px; border-radius:8px; margin-bottom:14px; font-size:12.5px; }
+  .note { background:var(--panel); border:1px dashed var(--line); border-radius:10px; padding:14px; color:var(--mut); }
+  .note b { color:var(--ink); }
+</style>
+</head>
+<body>
+<header>
+  <div class="logo">62</div>
+  <div>
+    <h1>Org62 Command Center</h1>
+    <div class="sub">Ron Shpilman · SE · Field Service ANZ · FY27</div>
+  </div>
+  <div class="spacer"></div>
+  <span id="s-src" class="badge live">live</span>
+</header>
+
+<div class="kpis" id="kpis"></div>
+
+<div class="tabs" id="tabs">
+  <div class="tab active" data-tab="forecast">Forecast</div>
+  <div class="tab" data-tab="opps">Opportunities</div>
+  <div class="tab" data-tab="whitespace">New Business (ANZ White Space)</div>
+  <div class="tab" data-tab="coach">Forecasting Coach</div>
+  <div class="tab" data-tab="v2mom">V2MOM</div>
+</div>
+
+<main>
+  <div id="err" class="err" style="display:none"></div>
+  <div id="view"></div>
+</main>
+
+<script>
+const STALE_DAYS = 14;                       // SE Next Steps stale threshold (design default)
+const fmt  = n => n==null ? "—" : "$"+Math.round(n).toLocaleString();
+const fmtK = n => n==null ? "—" : (Math.abs(n)>=1e6 ? "$"+(n/1e6).toFixed(2)+"M" : "$"+Math.round(n/1e3)+"K");
+const daysSince = d => { if(!d) return null; const x=(Date.now()-new Date(d))/86400000; return isNaN(x)?null:Math.floor(x); };
+const isPast = d => d && new Date(d) < new Date(new Date().toDateString());
+const CAT = c => (c||"").toLowerCase();
+
+let DATA = { forecast:null, whitespace:null };
+let state = { tab:"forecast", q:"", sortKey:null, sortDir:-1 };
+
+async function fetchAll(){
+  const [f,w] = await Promise.all([ fetch("/api/forecast").then(r=>r.json()),
+                                    fetch("/api/whitespace").then(r=>r.json()) ]);
+  DATA.forecast = f; DATA.whitespace = w;
+  const src = f.source || "live";
+  const b = document.getElementById("s-src"); b.textContent = src; b.className = "badge "+src;
+  const err = document.getElementById("err");
+  if(f.error || w.error){ err.style.display="block";
+    err.textContent = "Live query failed, showing snapshot — " + (f.error || w.error); }
+  else err.style.display = "none";
+  renderKPIs(); render();
+}
+
+// ---- KPI band -------------------------------------------------------------
+function kpiData(){
+  const rows = (DATA.forecast?.rows)||[];
+  const won   = rows.filter(r=>r.isWon);
+  const openR = rows.filter(r=>!r.isClosed);
+  const risk  = openR.filter(r=>{ const d=daysSince(r.lastActivity);
+                                  return (d!=null && d>=90) || !r.nextStep || isPast(r.close); });
+  const closedWon = won.reduce((s,r)=>s+(r.amount||0),0);
+  const pipeline  = openR.reduce((s,r)=>s+(r.amount||0),0);
+  const atRisk    = risk.reduce((s,r)=>s+(r.amount||0),0);
+  return [
+    {lab:"Closed Won (FY27)", val:fmtK(closedWon), meta:won.length+" deals won"},
+    {lab:"Total Pipeline",    val:fmtK(pipeline),  meta:openR.length+" open opps"},
+    {lab:"Pipeline at Risk",  val:fmtK(atRisk),    meta:risk.length+" flagged", cls: atRisk?"":""},
+    {lab:"Customer Hours",    val:"—", meta:"from V2MOM (manual)", na:true},
+    {lab:"Incomplete SE Fields", val:"—", meta:"needs SE field API names", na:true},
+    {lab:"V2MOM Progress",    val:"—", meta:"parse V2MOM PDF", na:true},
+  ];
+}
+function renderKPIs(){
+  document.getElementById("kpis").innerHTML = kpiData().map(k=>`
+    <div class="kpi ${k.na?'na':''}">
+      <div class="lab">${k.lab}${k.na?' <span class="tag">SETUP</span>':''}</div>
+      <div class="val">${k.val}</div>
+      <div class="meta">${k.meta}</div>
+    </div>`).join("");
+}
+
+// ---- tab views ------------------------------------------------------------
+function catPill(c){
+  const k = CAT(c);
+  if(k.includes("commit")) return `<span class="pill commit">Commit</span>`;
+  if(k.includes("best"))   return `<span class="pill best">Best Case</span>`;
+  if(k.includes("closed")||k.includes("won")) return `<span class="pill closed">Closed</span>`;
+  return `<span class="pill pipe">Pipeline</span>`;
+}
+function coachFlags(r){
+  const out=[]; const d=daysSince(r.lastActivity);
+  if(isPast(r.close) && !r.isClosed) out.push(`<span class="flag past">CLOSE DATE PAST</span>`);
+  if(d!=null && d>=90) out.push(`<span class="flag stale">STALE ${d}d</span>`);
+  if(!r.nextStep) out.push(`<span class="flag nns">NO NEXT STEP</span>`);
+  if(r.amount==null) out.push(`<span class="flag noamt">NO AMOUNT</span>`);
+  return out;
+}
+
+function viewForecast(){
+  const rows=(DATA.forecast?.rows)||[];
+  const open=rows.filter(r=>!r.isClosed);
+  const groups=[["Commit","commit"],["Best Case","best"],["Pipeline","pipe"],["Closed","closed"]];
+  const sum=f=>open.filter(f).reduce((s,r)=>s+(r.amount||0),0);
+  const byCat=name=>open.filter(r=>CAT(r.category).includes(name.toLowerCase().split(" ")[0]));
+  const target = open.reduce((s,r)=>s+(r.amount||0),0) || 1;   // no quota field verified — target = total open pipe
+  const tiles = groups.slice(0,3).map(([label])=>{
+    const rs=byCat(label); const v=rs.reduce((s,r)=>s+(r.amount||0),0);
+    const pct=Math.min(100,Math.round(v/target*100));
+    return `<div class="card"><h3>${label} talk track</h3>
+      <div class="row"><span class="k">Opportunities</span><b>${rs.length}</b></div>
+      <div class="row"><span class="k">Value</span><b>${fmt(v)}</b></div>
+      <div class="row"><span class="k">% of open pipe</span><b>${pct}%</b></div>
+      <div class="vbar"><i style="width:${pct}%"></i></div></div>`;
+  }).join("");
+  return `<div class="ttrack">${tiles}</div>` + table(open, [
+    {k:"category",t:"Cat",render:catPill},
+    {k:"name",t:"Opportunity"},
+    {k:"stage",t:"Stage"},
+    {k:"close",t:"Close"},
+    {k:"amount",t:"Amount",num:true,fmt:fmt},
+    {k:"lastActivity",t:"Last activity",render:v=>{const d=daysSince(v);return d!=null&&d>=90?`<span class="flag stale">${v} ⚠</span>`:(v||"—");}},
+  ]);
+}
+
+function viewOpps(){
+  const rows=(DATA.forecast?.rows)||[];
+  return table(rows,[
+    {k:"category",t:"Cat",render:catPill},
+    {k:"name",t:"Opportunity"},
+    {k:"stage",t:"Stage"},
+    {k:"close",t:"Close"},
+    {k:"amount",t:"Amount",num:true,fmt:fmt},
+    {k:"nextStep",t:"Next step",render:v=>v||`<span class="muted">—</span>`},
+  ]);
+}
+
+function viewWhitespace(){
+  const rows=(DATA.whitespace?.rows)||[];
+  return table(rows,[
+    {k:"amount",t:"Amount",num:true,fmt:fmt},
+    {k:"country",t:"Ctry",render:v=>`<span class="ctry">${v||"?"}</span>`},
+    {k:"stage",t:"Stg",render:v=>`<span class="chip">${v||""}</span>`},
+    {k:"close",t:"Close"},
+    {k:"account",t:"Account"},
+    {k:"owner",t:"Owner (AE)"},
+    {k:"name",t:"Opportunity"},
+  ]);
+}
+
+function viewCoach(){
+  const rows=((DATA.forecast?.rows)||[]).filter(r=>!r.isClosed);
+  const flagged=rows.map(r=>({r,f:coachFlags(r)})).filter(x=>x.f.length);
+  if(!flagged.length) return `<div class="note">No coaching signals — every open deal has a next step, recent activity, and a future close date. 🎯</div>`;
+  return `<div class="bar muted">${flagged.length} of ${rows.length} open deals need attention.</div>` + `<table><thead>
+    <tr><th>Signals</th><th>Opportunity</th><th>Stage</th><th>Close</th><th class="num">Amount</th></tr></thead><tbody>` +
+    flagged.sort((a,b)=>b.f.length-a.f.length).map(({r,f})=>`<tr>
+      <td>${f.join(" ")}</td><td>${r.name||"—"}</td><td>${r.stage||"—"}</td>
+      <td>${r.close||"—"}</td><td class="num amt">${fmt(r.amount)}</td></tr>`).join("") +
+    `</tbody></table>`;
+}
+
+function viewV2MOM(){
+  return `<div class="note">
+    <b>V2MOM tab — setup required.</b><br><br>
+    The design guide auto-derives measures (closed-won $, customer hours, transformational deals)
+    from a parsed V2MOM PDF. To enable: drop your Full V2MOM PDF somewhere readable and provide the
+    per-quarter customer-hours targets. Until then this tab and the Customer Hours / V2MOM Progress
+    KPIs stay blank rather than show invented numbers.<br><br>
+    <span class="muted">No V2MOM data is fabricated — per project rule "no assumptions".</span>
+  </div>`;
+}
+
+// ---- generic sortable/filterable table ------------------------------------
+function table(rows, cols){
+  const q=state.q.toLowerCase();
+  let rs=rows.filter(r=>!q || [r.name,r.account,r.owner,r.stage].some(v=>(v||"").toLowerCase().includes(q)));
+  if(state.sortKey){ const k=state.sortKey, dir=state.sortDir;
+    rs=rs.slice().sort((a,b)=>{ let x=a[k],y=b[k];
+      if(typeof x==="number"||typeof y==="number"){x=x||0;y=y||0;return (x-y)*dir;}
+      return String(x||"").localeCompare(String(y||""))*dir; }); }
+  const head="<tr>"+cols.map(c=>`<th class="${c.num?'num':''}" data-k="${c.k}">${c.t}${state.sortKey===c.k?(state.sortDir<0?" ▼":" ▲"):""}</th>`).join("")+"</tr>";
+  const body=rs.length?rs.map(r=>"<tr>"+cols.map(c=>{
+      const v=r[c.k];
+      const cell=c.render?c.render(v):(c.fmt?`<span class="amt">${c.fmt(v)}</span>`:(v==null?"—":v));
+      return `<td class="${c.num?'num':''}">${cell}</td>`;
+    }).join("")+"</tr>").join("") : `<tr><td colspan="${cols.length}" class="muted">No rows.</td></tr>`;
+  return `<div class="bar"><input id="q" type="search" placeholder="Filter by name / account / owner / stage…" value="${state.q.replace(/"/g,'&quot;')}"></div>
+          <table><thead>${head}</thead><tbody>${body}</tbody></table>`;
+}
+
+const VIEWS={forecast:viewForecast,opps:viewOpps,whitespace:viewWhitespace,coach:viewCoach,v2mom:viewV2MOM};
+function render(){
+  document.getElementById("view").innerHTML = VIEWS[state.tab]();
+  const q=document.getElementById("q");
+  if(q){ q.oninput=e=>{ state.q=e.target.value; const p=q.selectionStart; render();
+           const n=document.getElementById("q"); if(n){n.focus(); n.setSelectionRange(p,p);} }; }
+  document.querySelectorAll("#view th[data-k]").forEach(th=>th.onclick=()=>{
+    const k=th.dataset.k;
+    if(state.sortKey===k) state.sortDir*=-1; else {state.sortKey=k; state.sortDir=-1;}
+    render();
+  });
+}
+
+document.querySelectorAll(".tab").forEach(t=>t.onclick=()=>{
+  document.querySelectorAll(".tab").forEach(x=>x.classList.remove("active"));
+  t.classList.add("active");
+  state.tab=t.dataset.tab; state.sortKey=null; state.sortDir=-1;
+  render();
+});
+
+fetchAll();
+</script>
+</body>
+</html>
