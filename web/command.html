@@ -14,8 +14,10 @@
   * { box-sizing:border-box; }
   body { margin:0; font:13.5px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
          background:var(--bg); color:var(--ink); }
+  a { color:var(--accent2); text-decoration:none; }
+  a:hover { text-decoration:underline; }
   header { display:flex; align-items:center; gap:12px; padding:12px 20px; background:var(--panel2);
-           border-bottom:1px solid var(--line); position:sticky; top:0; z-index:5; }
+           border-bottom:1px solid var(--line); position:sticky; top:0; z-index:20; }
   header .logo { width:26px; height:26px; border-radius:7px; background:linear-gradient(135deg,var(--accent),var(--accent2));
                  display:flex; align-items:center; justify-content:center; font-weight:800; color:#fff; }
   header h1 { font-size:15px; margin:0; font-weight:700; letter-spacing:.2px; }
@@ -24,18 +26,21 @@
   .badge { font-size:10.5px; padding:3px 9px; border-radius:20px; font-weight:700; text-transform:uppercase; letter-spacing:.04em; }
   .badge.live { background:rgba(55,200,113,.15); color:var(--good); }
   .badge.snapshot { background:rgba(255,176,32,.15); color:var(--warn); }
+  #refresh { background:var(--chip); color:var(--ink); border:1px solid var(--line); border-radius:8px;
+             padding:6px 12px; font-size:12px; font-weight:650; cursor:pointer; display:flex; gap:6px; align-items:center; }
+  #refresh:hover { border-color:var(--accent2); }
+  #refresh[disabled] { opacity:.5; cursor:default; }
+  #refresh .spin { display:inline-block; width:12px; height:12px; border:2px solid var(--dim);
+                   border-top-color:var(--accent2); border-radius:50%; animation:spin .7s linear infinite; }
+  @keyframes spin { to { transform:rotate(360deg); } }
 
-  /* KPI band */
   .kpis { display:grid; grid-template-columns:repeat(6,1fr); gap:12px; padding:16px 20px 4px; }
   .kpi { background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:12px 14px; min-height:78px; }
-  .kpi .lab { color:var(--mut); font-size:11px; text-transform:uppercase; letter-spacing:.05em; display:flex; gap:6px; align-items:center; }
+  .kpi .lab { color:var(--mut); font-size:11px; text-transform:uppercase; letter-spacing:.05em; }
   .kpi .val { font-size:22px; font-weight:750; margin-top:6px; font-variant-numeric:tabular-nums; }
   .kpi .meta { color:var(--dim); font-size:11px; margin-top:2px; }
-  .kpi.na .val { color:var(--dim); }
-  .tag { font-size:9px; background:var(--chip); color:var(--mut); border-radius:5px; padding:1px 5px; font-weight:700; }
-  .up { color:var(--good); } .down { color:var(--bad); }
+  .kpi.risk .val { color:var(--warn); }
 
-  /* tabs */
   .tabs { display:flex; gap:4px; padding:12px 20px 0; border-bottom:1px solid var(--line); flex-wrap:wrap; }
   .tab { padding:9px 15px; cursor:pointer; color:var(--mut); border-bottom:2px solid transparent; font-weight:650; font-size:13px; }
   .tab.active { color:var(--ink); border-bottom-color:var(--accent2); }
@@ -45,8 +50,10 @@
   input[type=search] { flex:1; min-width:200px; padding:9px 12px; background:var(--panel); border:1px solid var(--line);
                        border-radius:8px; font-size:13px; color:var(--ink); }
   input[type=search]::placeholder { color:var(--dim); }
+  .toggle { display:flex; align-items:center; gap:7px; color:var(--mut); font-size:12.5px; cursor:pointer; user-select:none;
+            background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:8px 12px; }
+  .toggle input { accent-color:var(--accent2); }
 
-  /* forecast talk-track tiles */
   .ttrack { display:grid; grid-template-columns:repeat(auto-fit,minmax(230px,1fr)); gap:12px; margin-bottom:20px; }
   .card { background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:14px; }
   .card h3 { margin:0 0 10px; font-size:13px; font-weight:700; }
@@ -63,7 +70,10 @@
   th { background:var(--panel2); font-size:11px; color:var(--mut); text-transform:uppercase; letter-spacing:.04em;
        cursor:pointer; user-select:none; white-space:nowrap; }
   th.num, td.num { text-align:right; white-space:nowrap; }
+  td.close, th.close { white-space:nowrap; min-width:96px; }
+  tr[data-id] { cursor:pointer; }
   tr:hover td { background:rgba(76,159,254,.05); }
+  tr.dead td { opacity:.5; }
   .amt { font-variant-numeric:tabular-nums; font-weight:650; }
   .chip { background:var(--chip); color:var(--accent2); border-radius:6px; padding:1px 7px; font-size:11.5px; font-weight:650; }
   .pill { border-radius:6px; padding:1px 7px; font-size:11px; font-weight:700; }
@@ -71,6 +81,7 @@
   .pill.best   { background:rgba(76,159,254,.15); color:var(--accent2); }
   .pill.pipe   { background:rgba(139,151,168,.15); color:var(--mut); }
   .pill.closed { background:rgba(46,139,87,.2); color:var(--good); }
+  .pill.dead   { background:rgba(255,92,92,.15); color:var(--bad); }
   .ctry { font-weight:700; color:var(--accent2); }
   .flag { font-size:10.5px; font-weight:700; padding:1px 6px; border-radius:5px; margin-right:4px; display:inline-block; }
   .flag.stale { background:rgba(255,92,92,.15); color:var(--bad); }
@@ -81,7 +92,36 @@
   .err { background:rgba(255,176,32,.1); color:var(--warn); border:1px solid rgba(255,176,32,.3);
          padding:8px 12px; border-radius:8px; margin-bottom:14px; font-size:12.5px; }
   .note { background:var(--panel); border:1px dashed var(--line); border-radius:10px; padding:14px; color:var(--mut); }
-  .note b { color:var(--ink); }
+
+  /* activity */
+  .months { display:flex; align-items:flex-end; gap:6px; height:150px; padding:12px 0 0; }
+  .months .m { flex:1; display:flex; flex-direction:column; align-items:center; gap:5px; justify-content:flex-end; }
+  .months .m i { width:70%; background:linear-gradient(180deg,var(--accent2),var(--accent)); border-radius:4px 4px 0 0; display:block; }
+  .months .m span { font-size:10px; color:var(--mut); }
+
+  /* detail drawer */
+  #scrim { position:fixed; inset:0; background:rgba(0,0,0,.5); z-index:30; display:none; }
+  #drawer { position:fixed; top:0; right:0; height:100%; width:min(460px,92vw); background:var(--panel2);
+            border-left:1px solid var(--line); z-index:31; transform:translateX(100%); transition:transform .2s ease;
+            overflow-y:auto; padding:0; }
+  #drawer.open { transform:translateX(0); }
+  #drawer .dh { position:sticky; top:0; background:var(--panel2); border-bottom:1px solid var(--line);
+                padding:16px 18px; display:flex; gap:10px; align-items:flex-start; }
+  #drawer .dh h2 { margin:0; font-size:15px; font-weight:700; line-height:1.3; }
+  #drawer .dh .close { margin-left:auto; cursor:pointer; color:var(--mut); font-size:20px; line-height:1; }
+  #drawer .body { padding:16px 18px 40px; }
+  .kv { display:flex; gap:10px; padding:5px 0; font-size:12.5px; border-bottom:1px dashed var(--line); }
+  .kv .k { color:var(--mut); min-width:92px; }
+  .sect { margin-top:18px; }
+  .sect h4 { margin:0 0 8px; font-size:11px; text-transform:uppercase; letter-spacing:.05em; color:var(--accent2); }
+  .notebox { background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:10px 12px;
+             font-size:12.5px; white-space:pre-wrap; margin-bottom:8px; }
+  .notebox .lbl { color:var(--mut); font-size:10.5px; text-transform:uppercase; letter-spacing:.04em; margin-bottom:3px; }
+  .ptable { width:100%; border-collapse:collapse; font-size:12px; }
+  .ptable td { padding:5px 8px; border-bottom:1px solid var(--line); }
+  .ptable td.num { text-align:right; font-variant-numeric:tabular-nums; }
+  .actitem { font-size:12px; padding:6px 0; border-bottom:1px dashed var(--line); }
+  .actitem .meta { color:var(--dim); font-size:11px; }
 </style>
 </head>
 <body>
@@ -92,17 +132,18 @@
     <div class="sub">Ron Shpilman · SE · Field Service ANZ · FY27</div>
   </div>
   <div class="spacer"></div>
+  <button id="refresh" title="Resync with Org62">↻ Refresh</button>
   <span id="s-src" class="badge live">live</span>
 </header>
 
 <div class="kpis" id="kpis"></div>
 
 <div class="tabs" id="tabs">
-  <div class="tab active" data-tab="forecast">Forecast</div>
-  <div class="tab" data-tab="opps">Opportunities</div>
+  <div class="tab active" data-tab="open">Open Pipe</div>
+  <div class="tab" data-tab="closed">Closed Pipe</div>
   <div class="tab" data-tab="whitespace">New Business (ANZ White Space)</div>
   <div class="tab" data-tab="coach">Forecasting Coach</div>
-  <div class="tab" data-tab="v2mom">V2MOM</div>
+  <div class="tab" data-tab="activity">Activity Log</div>
 </div>
 
 <main>
@@ -110,170 +151,273 @@
   <div id="view"></div>
 </main>
 
+<div id="scrim"></div>
+<aside id="drawer"><div id="drawer-inner"></div></aside>
+
 <script>
-const STALE_DAYS = 14;                       // SE Next Steps stale threshold (design default)
+const SF = "https://org62.lightning.force.com/lightning/r/Opportunity/";
+const STALE_DAYS = 90;
+const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
 const fmt  = n => n==null ? "—" : "$"+Math.round(n).toLocaleString();
 const fmtK = n => n==null ? "—" : (Math.abs(n)>=1e6 ? "$"+(n/1e6).toFixed(2)+"M" : "$"+Math.round(n/1e3)+"K");
+// DD Mmm YY  (2026-04-30 -> 30 Apr 26)
+function fmtDate(d){
+  if(!d) return "—";
+  const dt = new Date(d.length<=10 ? d+"T00:00:00" : d);
+  if(isNaN(dt)) return d;
+  return String(dt.getDate()).padStart(2,"0")+" "+MONTHS[dt.getMonth()]+" "+String(dt.getFullYear()).slice(-2);
+}
 const daysSince = d => { if(!d) return null; const x=(Date.now()-new Date(d))/86400000; return isNaN(x)?null:Math.floor(x); };
 const isPast = d => d && new Date(d) < new Date(new Date().toDateString());
 const CAT = c => (c||"").toLowerCase();
+const hrs = m => (m/60).toFixed(0);
+const esc = s => (s==null?"":String(s)).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 
-let DATA = { forecast:null, whitespace:null };
-let state = { tab:"forecast", q:"", sortKey:null, sortDir:-1 };
+let DATA = { forecast:null, whitespace:null, activity:null };
+let state = { tab:"open", q:"", sortKey:null, sortDir:-1, showDead:false };
+
+// live (non-dead) row helpers -------------------------------------------------
+const liveRows   = () => ((DATA.forecast?.rows)||[]).filter(r=>!r.isDead);
+const openRows   = () => liveRows().filter(r=>!r.isClosed);
+const closedRows = () => ((DATA.forecast?.rows)||[]).filter(r=>r.isClosed); // dead handled by toggle
 
 async function fetchAll(){
-  const [f,w] = await Promise.all([ fetch("/api/forecast").then(r=>r.json()),
-                                    fetch("/api/whitespace").then(r=>r.json()) ]);
-  DATA.forecast = f; DATA.whitespace = w;
-  const src = f.source || "live";
-  const b = document.getElementById("s-src"); b.textContent = src; b.className = "badge "+src;
-  const err = document.getElementById("err");
-  if(f.error || w.error){ err.style.display="block";
-    err.textContent = "Live query failed, showing snapshot — " + (f.error || w.error); }
-  else err.style.display = "none";
-  renderKPIs(); render();
+  const btn=document.getElementById("refresh");
+  btn.disabled=true; btn.innerHTML='<span class="spin"></span> Syncing';
+  try {
+    const [f,w,a] = await Promise.all([
+      fetch("/api/forecast").then(r=>r.json()),
+      fetch("/api/whitespace").then(r=>r.json()),
+      fetch("/api/activity").then(r=>r.json()),
+    ]);
+    DATA.forecast=f; DATA.whitespace=w; DATA.activity=a;
+    setBadge(f,w);
+    renderKPIs(); render();
+  } finally {
+    btn.disabled=false; btn.innerHTML="↻ Refresh";
+  }
+}
+
+function setBadge(f,w){
+  const b=document.getElementById("s-src"), err=document.getElementById("err");
+  if(f.source==="live"){ b.textContent="live"; b.className="badge live"; err.style.display="none"; }
+  else if(f.live_via==="mcp"){ b.textContent="MCP · "+(f.generated||""); b.className="badge live"; err.style.display="none"; }
+  else { b.textContent="snapshot"; b.className="badge snapshot";
+    if(f.error||w.error){ err.style.display="block";
+      err.textContent="Showing bundled snapshot — no live Org62 connection. "+(f.error||w.error); }
+    else err.style.display="none"; }
 }
 
 // ---- KPI band -------------------------------------------------------------
-function kpiData(){
-  const rows = (DATA.forecast?.rows)||[];
-  const won   = rows.filter(r=>r.isWon);
-  const openR = rows.filter(r=>!r.isClosed);
-  const risk  = openR.filter(r=>{ const d=daysSince(r.lastActivity);
-                                  return (d!=null && d>=90) || !r.nextStep || isPast(r.close); });
-  const closedWon = won.reduce((s,r)=>s+(r.amount||0),0);
-  const pipeline  = openR.reduce((s,r)=>s+(r.amount||0),0);
-  const atRisk    = risk.reduce((s,r)=>s+(r.amount||0),0);
-  return [
-    {lab:"Closed Won (FY27)", val:fmtK(closedWon), meta:won.length+" deals won"},
-    {lab:"Total Pipeline",    val:fmtK(pipeline),  meta:openR.length+" open opps"},
-    {lab:"Pipeline at Risk",  val:fmtK(atRisk),    meta:risk.length+" flagged", cls: atRisk?"":""},
-    {lab:"Customer Hours",    val:"—", meta:"from V2MOM (manual)", na:true},
-    {lab:"Incomplete SE Fields", val:"—", meta:"needs SE field API names", na:true},
-    {lab:"V2MOM Progress",    val:"—", meta:"parse V2MOM PDF", na:true},
-  ];
-}
 function renderKPIs(){
-  document.getElementById("kpis").innerHTML = kpiData().map(k=>`
-    <div class="kpi ${k.na?'na':''}">
-      <div class="lab">${k.lab}${k.na?' <span class="tag">SETUP</span>':''}</div>
+  const won=liveRows().filter(r=>r.isWon), open=openRows();
+  const risk=open.filter(r=>{const d=daysSince(r.lastActivity);
+    return (d!=null&&d>=STALE_DAYS)||!r.aeNotes?.nextStep||isPast(r.close);});
+  const closedWon=won.reduce((s,r)=>s+(r.amount||0),0);
+  const pipeline=open.reduce((s,r)=>s+(r.amount||0),0);
+  const atRisk=risk.reduce((s,r)=>s+(r.amount||0),0);
+  const act=DATA.activity||{};
+  const kpis=[
+    {lab:"Closed Won (FY27)", val:fmtK(closedWon), meta:won.length+" deals won"},
+    {lab:"Open Pipeline",     val:fmtK(pipeline),  meta:open.length+" open opps"},
+    {lab:"Pipeline at Risk",  val:fmtK(atRisk),    meta:risk.length+" flagged", cls:"risk"},
+    {lab:"New Business (ANZ)",val:fmtK(DATA.whitespace?.total), meta:(DATA.whitespace?.count||0)+" white-space opps"},
+    {lab:"Time Spent (FY27)", val:act.totalMinutes!=null?hrs(act.totalMinutes)+" h":"—", meta:(act.totalEvents||0)+" events"},
+    {lab:"Dead / Excluded",   val:String(((DATA.forecast?.rows)||[]).filter(r=>r.isDead).length), meta:"omitted from KPIs"},
+  ];
+  document.getElementById("kpis").innerHTML=kpis.map(k=>`
+    <div class="kpi ${k.cls||''}">
+      <div class="lab">${k.lab}</div>
       <div class="val">${k.val}</div>
       <div class="meta">${k.meta}</div>
     </div>`).join("");
 }
 
-// ---- tab views ------------------------------------------------------------
+// ---- shared cell renderers ------------------------------------------------
 function catPill(c){
-  const k = CAT(c);
+  const k=CAT(c);
   if(k.includes("commit")) return `<span class="pill commit">Commit</span>`;
   if(k.includes("best"))   return `<span class="pill best">Best Case</span>`;
   if(k.includes("closed")||k.includes("won")) return `<span class="pill closed">Closed</span>`;
   return `<span class="pill pipe">Pipeline</span>`;
 }
+function oppLink(r){
+  const nm=esc(r.name||"—");
+  return r.id ? `<a href="${SF}${r.id}/view" target="_blank" rel="noopener">${nm}</a>` : nm;
+}
 function coachFlags(r){
   const out=[]; const d=daysSince(r.lastActivity);
-  if(isPast(r.close) && !r.isClosed) out.push(`<span class="flag past">CLOSE DATE PAST</span>`);
-  if(d!=null && d>=90) out.push(`<span class="flag stale">STALE ${d}d</span>`);
-  if(!r.nextStep) out.push(`<span class="flag nns">NO NEXT STEP</span>`);
+  if(isPast(r.close)&&!r.isClosed) out.push(`<span class="flag past">CLOSE DATE PAST</span>`);
+  if(d!=null&&d>=STALE_DAYS) out.push(`<span class="flag stale">STALE ${d}d</span>`);
+  if(!r.aeNotes?.nextStep) out.push(`<span class="flag nns">NO NEXT STEP</span>`);
   if(r.amount==null) out.push(`<span class="flag noamt">NO AMOUNT</span>`);
   return out;
 }
 
-function viewForecast(){
-  const rows=(DATA.forecast?.rows)||[];
-  const open=rows.filter(r=>!r.isClosed);
-  const groups=[["Commit","commit"],["Best Case","best"],["Pipeline","pipe"],["Closed","closed"]];
-  const sum=f=>open.filter(f).reduce((s,r)=>s+(r.amount||0),0);
-  const byCat=name=>open.filter(r=>CAT(r.category).includes(name.toLowerCase().split(" ")[0]));
-  const target = open.reduce((s,r)=>s+(r.amount||0),0) || 1;   // no quota field verified — target = total open pipe
-  const tiles = groups.slice(0,3).map(([label])=>{
-    const rs=byCat(label); const v=rs.reduce((s,r)=>s+(r.amount||0),0);
-    const pct=Math.min(100,Math.round(v/target*100));
+// ---- tab views ------------------------------------------------------------
+function viewOpen(){
+  const open=openRows();
+  const groups=["Commit","Best Case","Pipeline"];
+  const target=open.reduce((s,r)=>s+(r.amount||0),0)||1; // no quota field verified — target = total open pipe
+  const tiles=groups.map(label=>{
+    const rs=open.filter(r=>CAT(r.category).includes(label.toLowerCase().split(" ")[0]));
+    const v=rs.reduce((s,r)=>s+(r.amount||0),0); const pct=Math.min(100,Math.round(v/target*100));
     return `<div class="card"><h3>${label} talk track</h3>
       <div class="row"><span class="k">Opportunities</span><b>${rs.length}</b></div>
       <div class="row"><span class="k">Value</span><b>${fmt(v)}</b></div>
       <div class="row"><span class="k">% of open pipe</span><b>${pct}%</b></div>
       <div class="vbar"><i style="width:${pct}%"></i></div></div>`;
   }).join("");
-  return `<div class="ttrack">${tiles}</div>` + table(open, [
+  return `<div class="ttrack">${tiles}</div>` + table(open,[
     {k:"category",t:"Cat",render:catPill},
-    {k:"name",t:"Opportunity"},
+    {k:"name",t:"Opportunity",render:(_,r)=>oppLink(r)},
+    {k:"account",t:"Account"},
     {k:"stage",t:"Stage"},
-    {k:"close",t:"Close"},
+    {k:"close",t:"Close",cls:"close",render:fmtDate},
     {k:"amount",t:"Amount",num:true,fmt:fmt},
-    {k:"lastActivity",t:"Last activity",render:v=>{const d=daysSince(v);return d!=null&&d>=90?`<span class="flag stale">${v} ⚠</span>`:(v||"—");}},
+    {k:"lastActivity",t:"Last activity",render:v=>{const d=daysSince(v);
+      return d!=null&&d>=STALE_DAYS?`<span class="flag stale">${fmtDate(v)} ⚠</span>`:fmtDate(v);}},
   ]);
 }
 
-function viewOpps(){
-  const rows=(DATA.forecast?.rows)||[];
-  return table(rows,[
-    {k:"category",t:"Cat",render:catPill},
-    {k:"name",t:"Opportunity"},
+function viewClosed(){
+  let rows=closedRows();
+  const shown=state.showDead?rows:rows.filter(r=>!r.isDead);
+  const won=shown.filter(r=>r.isWon), wonV=won.reduce((s,r)=>s+(r.amount||0),0);
+  const deadN=rows.filter(r=>r.isDead).length;
+  const head=`<div class="bar">
+    <div class="card" style="padding:10px 14px"><span class="k muted">Closed Won </span><b class="amt">${fmt(wonV)}</b> · ${won.length} deals</div>
+    <label class="toggle"><input type="checkbox" id="deadtog" ${state.showDead?"checked":""}> Show dead (${deadN})</label>
+  </div>`;
+  return head + table(shown,[
+    {k:"category",t:"Cat",render:(v,r)=>r.isDead?`<span class="pill dead">Dead</span>`:catPill(v)},
+    {k:"name",t:"Opportunity",render:(_,r)=>oppLink(r)},
+    {k:"account",t:"Account"},
     {k:"stage",t:"Stage"},
-    {k:"close",t:"Close"},
+    {k:"close",t:"Close",cls:"close",render:fmtDate},
     {k:"amount",t:"Amount",num:true,fmt:fmt},
-    {k:"nextStep",t:"Next step",render:v=>v||`<span class="muted">—</span>`},
-  ]);
+  ], r=>r.isDead?"dead":"");
 }
 
 function viewWhitespace(){
   const rows=(DATA.whitespace?.rows)||[];
   return table(rows,[
     {k:"amount",t:"Amount",num:true,fmt:fmt},
-    {k:"country",t:"Ctry",render:v=>`<span class="ctry">${v||"?"}</span>`},
-    {k:"stage",t:"Stg",render:v=>`<span class="chip">${v||""}</span>`},
-    {k:"close",t:"Close"},
+    {k:"country",t:"Ctry",render:v=>`<span class="ctry">${esc(v)||"?"}</span>`},
+    {k:"stage",t:"Stg",render:v=>`<span class="chip">${esc(v)}</span>`},
     {k:"account",t:"Account"},
     {k:"owner",t:"Owner (AE)"},
-    {k:"name",t:"Opportunity"},
+    {k:"name",t:"Opportunity",render:(_,r)=>oppLink(r)},
+    {k:"close",t:"Close Date",cls:"close",render:fmtDate},
   ]);
 }
 
 function viewCoach(){
-  const rows=((DATA.forecast?.rows)||[]).filter(r=>!r.isClosed);
+  const rows=openRows();
   const flagged=rows.map(r=>({r,f:coachFlags(r)})).filter(x=>x.f.length);
   if(!flagged.length) return `<div class="note">No coaching signals — every open deal has a next step, recent activity, and a future close date. 🎯</div>`;
-  return `<div class="bar muted">${flagged.length} of ${rows.length} open deals need attention.</div>` + `<table><thead>
-    <tr><th>Signals</th><th>Opportunity</th><th>Stage</th><th>Close</th><th class="num">Amount</th></tr></thead><tbody>` +
-    flagged.sort((a,b)=>b.f.length-a.f.length).map(({r,f})=>`<tr>
-      <td>${f.join(" ")}</td><td>${r.name||"—"}</td><td>${r.stage||"—"}</td>
-      <td>${r.close||"—"}</td><td class="num amt">${fmt(r.amount)}</td></tr>`).join("") +
+  return `<div class="bar muted">${flagged.length} of ${rows.length} open deals need attention.</div>`+
+    `<table><thead><tr><th>Signals</th><th>Opportunity</th><th>Stage</th><th class="close">Close</th><th class="num">Amount</th></tr></thead><tbody>`+
+    flagged.sort((a,b)=>b.f.length-a.f.length).map(({r,f})=>`<tr data-id="${esc(r.id||'')}">
+      <td>${f.join(" ")}</td><td>${oppLink(r)}</td><td>${esc(r.stage)||"—"}</td>
+      <td class="close">${fmtDate(r.close)}</td><td class="num amt">${fmt(r.amount)}</td></tr>`).join("")+
     `</tbody></table>`;
 }
 
-function viewV2MOM(){
-  return `<div class="note">
-    <b>V2MOM tab — setup required.</b><br><br>
-    The design guide auto-derives measures (closed-won $, customer hours, transformational deals)
-    from a parsed V2MOM PDF. To enable: drop your Full V2MOM PDF somewhere readable and provide the
-    per-quarter customer-hours targets. Until then this tab and the Customer Hours / V2MOM Progress
-    KPIs stay blank rather than show invented numbers.<br><br>
-    <span class="muted">No V2MOM data is fabricated — per project rule "no assumptions".</span>
-  </div>`;
+function viewActivity(){
+  const a=DATA.activity; if(!a) return `<div class="note">No activity data.</div>`;
+  const maxM=Math.max(1,...(a.byMonth||[]).map(m=>m.minutes));
+  const bars=(a.byMonth||[]).map(m=>{
+    const h=Math.round(m.minutes/maxM*120);
+    const [y,mo]=m.month.split("-");
+    return `<div class="m" title="${m.count} events · ${hrs(m.minutes)}h">
+      <i style="height:${h}px"></i><span>${MONTHS[+mo-1]} ${y.slice(-2)}</span></div>`;
+  }).join("");
+  const typeCards=(a.byType||[]).map(t=>`
+    <div class="card"><h3>${esc(t.type)}</h3>
+      <div class="row"><span class="k">Events</span><b>${t.count}</b></div>
+      <div class="row"><span class="k">Time spent</span><b>${hrs(t.minutes)} h</b></div>
+      <div class="row"><span class="k">Avg / event</span><b>${(t.minutes/(t.count||1)).toFixed(0)} min</b></div>
+      <div class="vbar"><i style="width:${Math.round(t.minutes/a.totalMinutes*100)}%"></i></div></div>`).join("");
+  const recent=(a.recent||[]).slice(0,60).map(e=>`<div class="actitem">
+      <div>${esc(e.subject)||"(no subject)"} ${e.whatId?`<a href="https://org62.lightning.force.com/lightning/r/${esc(e.whatId)}/view" target="_blank" rel="noopener">↗</a>`:""}</div>
+      <div class="meta">${fmtDate(e.date)} · ${esc(e.type)} · ${e.mins} min${e.what?` · ${esc(e.what)}`:""}</div></div>`).join("");
+  return `<div class="ttrack">
+      <div class="card"><h3>Total time (FY27)</h3><div class="val" style="font-size:26px;font-weight:750">${hrs(a.totalMinutes)} h</div>
+        <div class="row"><span class="k">Events</span><b>${a.totalEvents}</b></div>
+        <div class="row"><span class="k">Avg / event</span><b>${(a.totalMinutes/(a.totalEvents||1)).toFixed(0)} min</b></div></div>
+      ${typeCards}
+    </div>
+    <div class="card"><h3>Time spent by month</h3><div class="months">${bars}</div></div>
+    <div class="sect"><h4>Recent activity</h4>${recent}</div>`;
 }
 
 // ---- generic sortable/filterable table ------------------------------------
-function table(rows, cols){
+function table(rows, cols, rowClass){
   const q=state.q.toLowerCase();
-  let rs=rows.filter(r=>!q || [r.name,r.account,r.owner,r.stage].some(v=>(v||"").toLowerCase().includes(q)));
+  let rs=rows.filter(r=>!q||[r.name,r.account,r.owner,r.stage].some(v=>(v||"").toLowerCase().includes(q)));
   if(state.sortKey){ const k=state.sortKey, dir=state.sortDir;
     rs=rs.slice().sort((a,b)=>{ let x=a[k],y=b[k];
       if(typeof x==="number"||typeof y==="number"){x=x||0;y=y||0;return (x-y)*dir;}
       return String(x||"").localeCompare(String(y||""))*dir; }); }
-  const head="<tr>"+cols.map(c=>`<th class="${c.num?'num':''}" data-k="${c.k}">${c.t}${state.sortKey===c.k?(state.sortDir<0?" ▼":" ▲"):""}</th>`).join("")+"</tr>";
-  const body=rs.length?rs.map(r=>"<tr>"+cols.map(c=>{
+  const head="<tr>"+cols.map(c=>`<th class="${c.num?'num':''} ${c.cls||''}" data-k="${c.k}">${c.t}${state.sortKey===c.k?(state.sortDir<0?" ▼":" ▲"):""}</th>`).join("")+"</tr>";
+  const body=rs.length?rs.map(r=>`<tr data-id="${esc(r.id||'')}" class="${rowClass?rowClass(r):''}">`+cols.map(c=>{
       const v=r[c.k];
-      const cell=c.render?c.render(v):(c.fmt?`<span class="amt">${c.fmt(v)}</span>`:(v==null?"—":v));
-      return `<td class="${c.num?'num':''}">${cell}</td>`;
+      const cell=c.render?c.render(v,r):(c.fmt?`<span class="amt">${c.fmt(v)}</span>`:(v==null?"—":esc(v)));
+      return `<td class="${c.num?'num':''} ${c.cls||''}">${cell}</td>`;
     }).join("")+"</tr>").join("") : `<tr><td colspan="${cols.length}" class="muted">No rows.</td></tr>`;
-  return `<div class="bar"><input id="q" type="search" placeholder="Filter by name / account / owner / stage…" value="${state.q.replace(/"/g,'&quot;')}"></div>
+  return `<div class="bar"><input id="q" type="search" placeholder="Filter by name / account / owner / stage…" value="${esc(state.q)}"></div>
           <table><thead>${head}</thead><tbody>${body}</tbody></table>`;
 }
 
-const VIEWS={forecast:viewForecast,opps:viewOpps,whitespace:viewWhitespace,coach:viewCoach,v2mom:viewV2MOM};
+// ---- detail drawer --------------------------------------------------------
+function findRow(id){
+  return ((DATA.forecast?.rows)||[]).find(r=>r.id===id) || ((DATA.whitespace?.rows)||[]).find(r=>r.id===id);
+}
+function noteBlock(lbl,txt){ return txt?`<div class="notebox"><div class="lbl">${lbl}</div>${esc(txt)}</div>`:""; }
+function openDetail(id){
+  const r=findRow(id); if(!r) return;
+  const se=r.seNotes||{}, ae=r.aeNotes||{};
+  const products=(r.products||[]).map(p=>`<tr><td>${esc(p.name)}</td><td class="num">${p.qty??"—"}</td><td class="num">${fmt(p.total)}</td></tr>`).join("");
+  const acts=(r.activity||[]).slice(0,8).map(e=>`<div class="actitem"><div>${esc(e.subject)||"(no subject)"}</div>
+      <div class="meta">${fmtDate(e.date)} · ${esc(e.type)} · ${e.mins} min</div></div>`).join("");
+  const notes=[noteBlock("SE Comments"+(se.commentDate?` · ${fmtDate(se.commentDate)}`:""),se.comments),
+               noteBlock("SE Next Steps",se.nextSteps),
+               noteBlock("Architect Comments",se.architect),
+               noteBlock("Tech Exec Comments",se.techExec)].join("");
+  const aenotes=[noteBlock("AE Next Step",ae.nextStep),noteBlock("AE Description",ae.description)].join("");
+  document.getElementById("drawer-inner").innerHTML=`
+    <div class="dh">
+      <h2>${r.id?`<a href="${SF}${r.id}/view" target="_blank" rel="noopener">${esc(r.name)} ↗</a>`:esc(r.name)}</h2>
+      <span class="close" id="dclose">×</span>
+    </div>
+    <div class="body">
+      <div class="kv"><span class="k">Account</span><span>${esc(r.account)||"—"}</span></div>
+      <div class="kv"><span class="k">Core AE</span><span>${esc(r.owner)||"—"}</span></div>
+      ${r.se?`<div class="kv"><span class="k">SE team</span><span>${esc(r.se)}</span></div>`:""}
+      <div class="kv"><span class="k">Stage</span><span>${esc(r.stage)||"—"}</span></div>
+      <div class="kv"><span class="k">Close</span><span>${fmtDate(r.close)}</span></div>
+      <div class="kv"><span class="k">Amount</span><span class="amt">${fmt(r.amount)}</span></div>
+      <div class="sect"><h4>SE notes</h4>${notes||`<div class="muted">No SE notes.</div>`}</div>
+      <div class="sect"><h4>AE notes &amp; activity</h4>${aenotes||`<div class="muted">No AE notes.</div>`}${acts||""}</div>
+      <div class="sect"><h4>Products (${(r.products||[]).length})</h4>
+        ${products?`<table class="ptable"><tr><th>Product</th><th class="num">Qty</th><th class="num">Total</th></tr>${products}</table>`:`<div class="muted">No line items.</div>`}</div>
+    </div>`;
+  document.getElementById("drawer").classList.add("open");
+  document.getElementById("scrim").style.display="block";
+  document.getElementById("dclose").onclick=closeDetail;
+}
+function closeDetail(){
+  document.getElementById("drawer").classList.remove("open");
+  document.getElementById("scrim").style.display="none";
+}
+document.getElementById("scrim").onclick=closeDetail;
+document.addEventListener("keydown",e=>{ if(e.key==="Escape") closeDetail(); });
+
+// ---- render ---------------------------------------------------------------
+const VIEWS={open:viewOpen,closed:viewClosed,whitespace:viewWhitespace,coach:viewCoach,activity:viewActivity};
 function render(){
-  document.getElementById("view").innerHTML = VIEWS[state.tab]();
+  document.getElementById("view").innerHTML=VIEWS[state.tab]();
   const q=document.getElementById("q");
   if(q){ q.oninput=e=>{ state.q=e.target.value; const p=q.selectionStart; render();
            const n=document.getElementById("q"); if(n){n.focus(); n.setSelectionRange(p,p);} }; }
@@ -282,14 +426,21 @@ function render(){
     if(state.sortKey===k) state.sortDir*=-1; else {state.sortKey=k; state.sortDir=-1;}
     render();
   });
+  document.querySelectorAll("#view tr[data-id]").forEach(tr=>{
+    if(!tr.dataset.id) return;
+    tr.onclick=e=>{ if(e.target.tagName==="A") return; openDetail(tr.dataset.id); };
+  });
+  const dt=document.getElementById("deadtog");
+  if(dt) dt.onchange=e=>{ state.showDead=e.target.checked; render(); };
 }
 
 document.querySelectorAll(".tab").forEach(t=>t.onclick=()=>{
   document.querySelectorAll(".tab").forEach(x=>x.classList.remove("active"));
   t.classList.add("active");
-  state.tab=t.dataset.tab; state.sortKey=null; state.sortDir=-1;
+  state.tab=t.dataset.tab; state.sortKey=null; state.sortDir=-1; state.q="";
   render();
 });
+document.getElementById("refresh").onclick=fetchAll;
 
 fetchAll();
 </script>

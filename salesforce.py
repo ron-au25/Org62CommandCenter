@@ -110,13 +110,34 @@ class Org62:
         """
         uid = self.my_user_id()
         soql = (
-            "SELECT Opportunity.Name, Opportunity.StageName, Opportunity.CloseDate, "
-            "Opportunity.Amount, Opportunity.ForecastCategoryName, Opportunity.NextStep, "
-            "Opportunity.LastActivityDate, Opportunity.IsClosed, Opportunity.IsWon, "
-            "Opportunity.Account.Name, Opportunity.Owner.Name, TeamMemberRole "
+            "SELECT Opportunity.Id, Opportunity.Name, Opportunity.StageName, "
+            "Opportunity.CloseDate, Opportunity.Amount, Opportunity.ForecastCategoryName, "
+            "Opportunity.NextStep, Opportunity.LastActivityDate, Opportunity.IsClosed, "
+            "Opportunity.IsWon, Opportunity.Account.Name, Opportunity.Owner.Name, "
+            "Opportunity.SE_Comments__c, Opportunity.SE_Comment_Update_Date__c, "
+            "Opportunity.SE_Next_Steps__c, Opportunity.Architect_Comments__c, "
+            "Opportunity.Issues__c, Opportunity.Next_Steps__c, Opportunity.Description, "
+            "TeamMemberRole "
             "FROM OpportunityTeamMember "
             f"WHERE UserId = '{uid}' AND Opportunity.CloseDate = THIS_FISCAL_YEAR "
             "ORDER BY Opportunity.CloseDate ASC"
+        )
+        return self.query(soql)
+
+    def my_events_fy(self):
+        """My Events this FY — powers the Activity Log tab + time-spent KPI.
+
+        Event.OwnerId = me, ActivityDate in this FY. RecordType.Name drives the
+        distribution (verified: 'Solutions Event', 'Sales Events').
+        DurationInMinutes is the time-spent measure.
+        """
+        uid = self.my_user_id()
+        soql = (
+            "SELECT Id, Subject, RecordType.Name, DurationInMinutes, "
+            "ActivityDateTime, WhatId, What.Name "
+            "FROM Event "
+            f"WHERE OwnerId = '{uid}' AND ActivityDate = THIS_FISCAL_YEAR "
+            "ORDER BY ActivityDateTime DESC"
         )
         return self.query(soql)
 
@@ -135,7 +156,9 @@ class Org62:
         """
         soql = (
             "SELECT Id, Name, StageName, CloseDate, Amount, "
-            "Account.Name, Account.BillingCountry, Owner.Name "
+            "Account.Name, Account.BillingCountry, Owner.Name, NextStep, "
+            "SE_Comments__c, SE_Comment_Update_Date__c, SE_Next_Steps__c, "
+            "Architect_Comments__c, Issues__c, Next_Steps__c, LastActivityDate "
             "FROM Opportunity "
             "WHERE IsClosed = false "
             "AND (StageName LIKE '02%' OR StageName LIKE '03%' OR StageName LIKE '04%') "

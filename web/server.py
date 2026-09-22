@@ -58,8 +58,27 @@ def flatten_deals(records):
     return rows
 
 
+def _is_dead(stage):
+    return (stage or "").startswith("Dead")
+
+
+def _se_notes(o):
+    return {
+        "comments": o.get("SE_Comments__c"),
+        "commentDate": o.get("SE_Comment_Update_Date__c"),
+        "nextSteps": o.get("SE_Next_Steps__c"),
+        "architect": o.get("Architect_Comments__c"),
+        "techExec": o.get("Issues__c"),
+    }
+
+
 def flatten_fy(records):
-    """OpportunityTeamMember rows (open + closed, this FY) → deal dicts."""
+    """OpportunityTeamMember rows (open + closed, this FY) → enriched deal dicts.
+
+    Matches the baked-snapshot shape so live and snapshot render identically.
+    products[]/activity[] need per-opp bulk queries, so the live single-query
+    path leaves them empty; the MCP-baked snapshot carries them.
+    """
     rows = []
     for r in records:
         o = r.get("Opportunity") or {}
@@ -67,17 +86,24 @@ def flatten_fy(records):
         owner = o.get("Owner") or {}
         rows.append(
             {
+                "id": o.get("Id"),
                 "name": o.get("Name"),
                 "account": acct.get("Name"),
+                "owner": owner.get("Name"),
+                "se": None,
                 "stage": o.get("StageName"),
                 "category": o.get("ForecastCategoryName") or _stage_to_category(o.get("StageName")),
                 "close": o.get("CloseDate"),
                 "amount": o.get("Amount"),
-                "nextStep": o.get("NextStep"),
-                "lastActivity": o.get("LastActivityDate"),
                 "isClosed": bool(o.get("IsClosed")),
                 "isWon": bool(o.get("IsWon")),
-                "owner": owner.get("Name"),
+                "isDead": _is_dead(o.get("StageName")),
+                "lastActivity": o.get("LastActivityDate"),
+                "products": [],
+                "seNotes": _se_notes(o),
+                "aeNotes": {"nextStep": o.get("NextStep") or o.get("Next_Steps__c"),
+                            "description": o.get("Description")},
+                "activity": [],
             }
         )
     return rows
@@ -90,6 +116,7 @@ def flatten_whitespace(records):
         owner = o.get("Owner") or {}
         rows.append(
             {
+                "id": o.get("Id"),
                 "name": o.get("Name"),
                 "account": acct.get("Name"),
                 "country": acct.get("BillingCountry"),
@@ -97,9 +124,43 @@ def flatten_whitespace(records):
                 "close": o.get("CloseDate"),
                 "amount": o.get("Amount"),
                 "owner": owner.get("Name"),
+                "products": [],
+                "seNotes": _se_notes(o),
+                "aeNotes": {"nextStep": o.get("NextStep") or o.get("Next_Steps__c")},
+                "lastActivity": o.get("LastActivityDate"),
             }
         )
     return rows
+
+
+def flatten_activity(records):
+    """Event rows → distribution + recent list for the Activity Log tab."""
+    by_type, by_month, recent = {}, {}, []
+    total_min = 0
+    for e in records:
+        rt = (e.get("RecordType") or {}).get("Name") or "—"
+        mins = e.get("DurationInMinutes") or 0
+        dt = e.get("ActivityDateTime") or ""
+        total_min += mins
+        t = by_type.setdefault(rt, {"type": rt, "count": 0, "minutes": 0})
+        t["count"] += 1
+        t["minutes"] += mins
+        mon = dt[:7]
+        if mon:
+            m = by_month.setdefault(mon, {"month": mon, "count": 0, "minutes": 0})
+            m["count"] += 1
+            m["minutes"] += mins
+        if len(recent) < 150:
+            what = e.get("What") or {}
+            recent.append({"subject": e.get("Subject"), "type": rt, "date": dt,
+                           "mins": mins, "what": what.get("Name"), "whatId": e.get("WhatId")})
+    return {
+        "totalEvents": len(records),
+        "totalMinutes": total_min,
+        "byType": sorted(by_type.values(), key=lambda x: -x["minutes"]),
+        "byMonth": sorted(by_month.values(), key=lambda x: x["month"]),
+        "recent": recent,
+    }
 
 
 def _snapshot(name):
@@ -148,6 +209,19 @@ def api_whitespace():
         return jsonify(_payload(flatten_whitespace(org.anz_fsl_whitespace()), "live"))
     except Exception as e:
         snap = _snapshot("snapshot_whitespace.json")
+        snap["error"] = str(e)
+        return jsonify(snap)
+
+
+@app.route("/api/activity")
+def api_activity():
+    """My Events this FY — Activity Log tab (record-type distribution + time)."""
+    try:
+        payload = flatten_activity(org.my_events_fy())
+        payload["source"] = "live"
+        return jsonify(payload)
+    except Exception as e:
+        snap = _snapshot("snapshot_activity.json")
         snap["error"] = str(e)
         return jsonify(snap)
 
