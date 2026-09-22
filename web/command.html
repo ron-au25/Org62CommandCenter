@@ -134,7 +134,7 @@
   .calbar button { background:var(--chip); color:var(--ink); border:1px solid var(--line); border-radius:7px;
                    width:30px; height:28px; cursor:pointer; font-size:15px; }
   .calbar button:hover { border-color:var(--accent2); }
-  .cal { display:grid; grid-template-columns:repeat(7,1fr); gap:4px; }
+  .cal { display:grid; grid-template-columns:repeat(5,1fr); gap:4px; }
   .cal .dow { text-align:center; font-size:10.5px; text-transform:uppercase; letter-spacing:.04em; color:var(--mut); padding:4px 0; }
   .cal .cell { min-height:92px; background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:5px 6px; overflow:hidden; }
   .cal .cell.empty { background:transparent; border:none; }
@@ -145,6 +145,8 @@
              padding:1px 4px; border-radius:4px; margin-bottom:2px; border-left:3px solid var(--dim); background:var(--chip); }
   .cal .ev a { color:var(--ink); }
   .cal .ev b { display:none; }
+  .cal .ev .evh { color:var(--dim); float:right; margin-left:6px; }
+  .adot { display:inline-block; width:9px; height:9px; border-radius:2px; margin-right:6px; vertical-align:middle; }
   .acctlegend { display:flex; flex-wrap:wrap; gap:8px 14px; margin-top:12px; font-size:11px; color:var(--mut); }
   .acctlegend span b { display:inline-block; width:9px; height:9px; border-radius:2px; margin-right:5px; }
   .card.alert { border-color:rgba(255,92,92,.4); }
@@ -201,6 +203,17 @@ const daysSince = d => { if(!d) return null; const x=(Date.now()-new Date(d))/86
 const isPast = d => d && new Date(d) < new Date(new Date().toDateString());
 const CAT = c => (c||"").toLowerCase();
 const hrs = m => (m/60).toFixed(0);
+const hrs1 = m => (m/60).toFixed(1);
+// Melbourne-local calendar date for an event datetime, weekends folded into the
+// work week (Sat -> Fri, Sun -> Mon) so activity always lands on a business day.
+const bizDay = iso => {
+  const dt=new Date(iso); if(isNaN(dt)) return (iso||"").slice(0,10);
+  const s=dt.toLocaleDateString('en-CA',{timeZone:'Australia/Melbourne'}); // YYYY-MM-DD (Melbourne)
+  const [y,m,d]=s.split("-").map(Number);
+  const x=new Date(y,m-1,d), wd=x.getDay();
+  if(wd===0) x.setDate(x.getDate()+1); else if(wd===6) x.setDate(x.getDate()-1);
+  return x.getFullYear()+"-"+String(x.getMonth()+1).padStart(2,"0")+"-"+String(x.getDate()).padStart(2,"0");
+};
 const esc = s => (s==null?"":String(s)).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 // activity categories
 const CATS = { customer:{lab:"Customer", col:"var(--good)"},
@@ -429,8 +442,8 @@ function viewActivity(){
   const l14Rows=l14.length?l14.map(x=>{
     const top=(x.opps&&x.opps[0])||{}; const more=(x.opps||[]).length-1;
     return `<tr>
-      <td>${esc(x.account)||"—"}</td>
-      <td class="num amt">${hrs(x.minutes)} h</td>
+      <td><span class="adot" style="background:${acctColor(x.account)}"></span>${esc(x.account)||"—"}</td>
+      <td class="num amt">${hrs1(x.minutes)} h</td>
       <td>${oppLinkId(top.whatId,top.name)}${more>0?` <span class="muted">+${more}</span>`:""}${top.dead?` <span class="pill dead">Dead</span>`:""}</td>
       <td class="num amt">${fmt(top.amount)}</td>
       <td class="close">${fmtDate(top.close)}</td></tr>`;
@@ -450,25 +463,33 @@ function viewActivity(){
 function calendarHtml(events){
   if(!state.actMonth){ const t=new Date(); state.actMonth=t.getFullYear()+"-"+String(t.getMonth()+1).padStart(2,"0"); }
   const [Y,M]=state.actMonth.split("-").map(Number);
-  const byDay={}; let monMin=0, monN=0;
-  events.forEach(e=>{ const d=(e.date||"").slice(0,10); if(d.slice(0,7)!==state.actMonth) return;
-    (byDay[d]=byDay[d]||[]).push(e); monMin+=e.mins||0; monN++; });
-  const first=new Date(Y,M-1,1), startDow=first.getDay(), days=new Date(Y,M,0).getDate();
-  const todayStr=(()=>{const t=new Date();return t.getFullYear()+"-"+String(t.getMonth()+1).padStart(2,"0")+"-"+String(t.getDate()).padStart(2,"0");})();
-  const dow=["Sun","Mon","Tue","Wed","Thu","Fri","Sat"].map(d=>`<div class="dow">${d}</div>`).join("");
-  let cells="";
-  for(let i=0;i<startDow;i++) cells+=`<div class="cell empty"></div>`;
+  const byDay={}; let monMin=0, monN=0; const monAccts=new Set();
+  events.forEach(e=>{ const ds=bizDay(e.date); if(!ds||ds.slice(0,7)!==state.actMonth) return;
+    (byDay[ds]=byDay[ds]||[]).push(e); monMin+=e.mins||0; monN++; if(e.account) monAccts.add(e.account); });
+  const days=new Date(Y,M,0).getDate();
+  const todayStr=bizDay(new Date().toISOString());
+  const dow=["Mon","Tue","Wed","Thu","Fri"].map(d=>`<div class="dow">${d}</div>`).join("");
+  let cells="", placed=false;
   for(let d=1;d<=days;d++){
+    const wd=new Date(Y,M-1,d).getDay();
+    if(wd===0||wd===6) continue;              // skip weekends — 5-day work week
+    if(!placed){ for(let i=0;i<wd-1;i++) cells+=`<div class="cell empty"></div>`; placed=true; }
     const ds=`${Y}-${String(M).padStart(2,"0")}-${String(d).padStart(2,"0")}`;
-    const evs=(byDay[ds]||[]).sort((a,b)=>(a.date||"").localeCompare(b.date||""));
+    const evs=byDay[ds]||[];
     const dm=evs.reduce((s,e)=>s+(e.mins||0),0);
-    const chips=evs.map(e=>`<div class="ev" style="border-left-color:${acctColor(e.account)}" title="${e.account?esc(e.account)+' · ':''}${esc(e.subject)} · ${e.mins}m">
-        ${e.whatId?`<a href="https://org62.lightning.force.com/lightning/r/${esc(e.whatId)}/view" target="_blank" rel="noopener">${esc(e.subject)||"(untitled)"}</a>`:esc(e.subject)||"(untitled)"}</div>`).join("");
+    // group same-account activities into one chip per account
+    const groups={};
+    evs.forEach(e=>{ const k=e.account||"—"; (groups[k]=groups[k]||{account:e.account,mins:0,evs:[]}); groups[k].mins+=e.mins||0; groups[k].evs.push(e); });
+    const chips=Object.values(groups).sort((a,b)=>b.mins-a.mins).map(g=>{
+      const subs=g.evs.map(e=>`${e.subject||"(untitled)"} · ${e.mins}m`).join("\n");
+      const label=(g.account||"—")+(g.evs.length>1?` · ${g.evs.length}`:"");
+      return `<div class="ev" style="border-left-color:${acctColor(g.account)}" title="${esc((g.account||'—'))} · ${(g.mins/60).toFixed(1)}h\n${esc(subs)}">${esc(label)}<span class="evh">${(g.mins/60).toFixed(1)}h</span></div>`;
+    }).join("");
     cells+=`<div class="cell${ds===todayStr?' today':''}">
       <div class="dnum">${d}${dm?`<span class="dmin">${(dm/60).toFixed(1)}h</span>`:""}</div>${chips}</div>`;
   }
   // account legend for accounts appearing this month
-  const accts=[...new Set(events.filter(e=>(e.date||"").slice(0,7)===state.actMonth && e.account).map(e=>e.account))].sort();
+  const accts=[...monAccts].sort();
   const legend=accts.map(n=>`<span><b style="background:${acctColor(n)}"></b>${esc(n)}</span>`).join("");
   return `<div class="calbar">
       <button id="cal-prev">‹</button>
