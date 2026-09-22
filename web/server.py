@@ -133,41 +133,50 @@ def flatten_whitespace(records):
     return rows
 
 
-def _event_category(e):
+def _event_category(what_type, ev_type):
     """customer = related to an Opportunity; marketing = Campaign-related or a
     Marketing activity type; everything else = non-customer."""
-    wt = (e.get("What") or {}).get("Type") or ""
-    et = e.get("Type") or ""
-    if wt == "Opportunity":
+    if what_type == "Opportunity":
         return "customer"
-    if wt == "Campaign" or "marketing" in et.lower():
+    if what_type == "Campaign" or "marketing" in (ev_type or "").lower():
         return "marketing"
     return "noncustomer"
 
 
 def flatten_activity(records):
-    """Event rows → categorized distribution + recent list for Activity Log.
+    """Event rows → categorized distribution, alerts, and account breakdown.
 
-    Time-spent split by category (customer/marketing/non-customer) monthly and
-    overall; last-30-day total plus % vs the average FY month.
+    Uses the polymorphic `What` (TYPEOF) so Opportunity-related events carry the
+    account, amount, close date and stage. Time split by category monthly/overall;
+    last-30d total vs average FY month; dead-opportunity alerts in the last 7 days;
+    per-account time spent over the last 14 days.
     """
     from datetime import datetime, timedelta, timezone
 
-    by_type, by_month, by_cat, recent = {}, {}, {}, []
+    now = datetime.now(timezone.utc)
+    end = now.strftime("%Y-%m-%dT%H:%M:%S")
+    c7 = (now - timedelta(days=7)).strftime("%Y-%m-%dT00:00:00")
+    c14 = (now - timedelta(days=14)).strftime("%Y-%m-%dT00:00:00")
+    c30 = (now - timedelta(days=30)).strftime("%Y-%m-%dT00:00:00")
+
+    by_month, by_cat, recent, alerts = {}, {}, [], []
+    l14 = {}  # account -> {minutes, events, opps{name->{...}}}
     total_min = last30_min = last30_n = 0
-    cutoff = (datetime.now(timezone.utc) - timedelta(days=30)).strftime("%Y-%m-%dT%H:%M:%S")
     for e in records:
-        rt = (e.get("RecordType") or {}).get("Name") or "—"
+        what = e.get("What") or {}
+        wtype = (what.get("attributes") or {}).get("type")
         mins = e.get("DurationInMinutes") or 0
         dt = e.get("ActivityDateTime") or ""
-        cat = _event_category(e)
+        cat = _event_category(wtype, e.get("Type"))
+        acct = (what.get("Account") or {}).get("Name")
+        opp = what.get("Name")
+        stage = what.get("StageName")
+        dead = bool(stage and stage.startswith("Dead"))
+        amt, close = what.get("Amount"), what.get("CloseDate")
         total_min += mins
-        if dt and dt >= cutoff:
+        if c30 <= dt <= end:
             last30_min += mins
             last30_n += 1
-        t = by_type.setdefault(rt, {"type": rt, "count": 0, "minutes": 0})
-        t["count"] += 1
-        t["minutes"] += mins
         c = by_cat.setdefault(cat, {"category": cat, "count": 0, "minutes": 0})
         c["count"] += 1
         c["minutes"] += mins
@@ -178,13 +187,28 @@ def flatten_activity(records):
             m["count"] += 1
             m["minutes"] += mins
             m[cat] += mins
+        if dead and c7 <= dt <= end:
+            alerts.append({"subject": e.get("Subject"), "date": dt, "mins": mins, "opp": opp,
+                           "account": acct, "amount": amt, "close": close, "stage": stage,
+                           "whatId": e.get("WhatId")})
+        if cat == "customer" and c14 <= dt <= end:
+            a = l14.setdefault(acct or "—", {"account": acct or "—", "minutes": 0, "events": 0, "_opps": {}})
+            a["minutes"] += mins
+            a["events"] += 1
+            o = a["_opps"].setdefault(opp, {"name": opp, "amount": amt, "close": close,
+                                            "dead": dead, "whatId": e.get("WhatId"), "mins": 0})
+            o["mins"] += mins
         if len(recent) < 150:
-            what = e.get("What") or {}
-            recent.append({"subject": e.get("Subject"), "type": rt, "date": dt,
-                           "mins": mins, "what": what.get("Name"),
-                           "whatId": e.get("WhatId"), "category": cat})
+            recent.append({"subject": e.get("Subject"), "type": (e.get("RecordType") or {}).get("Name") or "—",
+                           "date": dt, "mins": mins, "what": opp, "whatId": e.get("WhatId"),
+                           "category": cat, "account": acct, "amount": amt, "close": close, "dead": dead})
     n_months = len(by_month) or 1
     avg_monthly = round(total_min / n_months)
+    last14 = []
+    for a in l14.values():
+        a["opps"] = sorted(a.pop("_opps").values(), key=lambda x: -x["mins"])
+        last14.append(a)
+    last14.sort(key=lambda x: -x["minutes"])
     return {
         "totalEvents": len(records),
         "totalMinutes": total_min,
@@ -192,9 +216,10 @@ def flatten_activity(records):
         "last30Events": last30_n,
         "avgMonthlyMinutes": avg_monthly,
         "last30VsAvgPct": round((last30_min - avg_monthly) / avg_monthly * 100) if avg_monthly else None,
-        "byType": sorted(by_type.values(), key=lambda x: -x["minutes"]),
         "byCategory": sorted(by_cat.values(), key=lambda x: -x["minutes"]),
         "byMonth": sorted(by_month.values(), key=lambda x: x["month"]),
+        "alerts": sorted(alerts, key=lambda x: x["date"], reverse=True),
+        "last14ByAccount": last14,
         "recent": recent,
     }
 

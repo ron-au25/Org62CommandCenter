@@ -126,6 +126,11 @@
   .ptable td.num { text-align:right; font-variant-numeric:tabular-nums; }
   .actitem { font-size:12px; padding:6px 0; border-bottom:1px dashed var(--line); }
   .actitem .meta { color:var(--dim); font-size:11px; }
+  .card.alert { border-color:rgba(255,92,92,.4); }
+  .card.alert h3 { color:var(--bad); }
+  .alertitem { font-size:12.5px; padding:8px 0; border-bottom:1px dashed var(--line); }
+  .alertitem:last-child { border-bottom:none; }
+  .alertitem .meta { color:var(--mut); font-size:11px; margin-top:2px; }
 </style>
 </head>
 <body>
@@ -368,19 +373,40 @@ function viewActivity(){
       <span>${MONTHS[+mo-1]} ${y.slice(-2)}</span></div>`;
   }).join("");
   const legend=Object.keys(CATS).map(k=>`<span><b style="background:${CATS[k].col}"></b>${CATS[k].lab}</span>`).join("");
-  const typeCards=(a.byType||[]).map(t=>`
-    <div class="card"><h3>${esc(t.type)}</h3>
-      <div class="row"><span class="k">Events</span><b>${t.count}</b></div>
-      <div class="row"><span class="k">Time spent</span><b>${hrs(t.minutes)} h</b></div>
-      <div class="vbar"><i style="width:${Math.round(t.minutes/a.totalMinutes*100)}%"></i></div></div>`).join("");
+  // Alerts — activity on DEAD opportunities in the last 7 days
+  const alerts=a.alerts||[];
+  const alertRows=alerts.length?alerts.map(x=>`<div class="alertitem">
+      <div>${oppLinkId(x.whatId,x.opp)} <span class="pill dead">${esc(x.stage)||"Dead"}</span></div>
+      <div class="meta">${esc(x.account)||"—"} · ${fmt(x.amount)} · close ${fmtDate(x.close)}</div>
+      <div class="meta">${fmtDate(x.date)} · ${esc(x.subject)||"(no subject)"} · ${x.mins} min</div></div>`).join("")
+    : `<div class="muted">No activity logged against dead opportunities in the last 7 days. ✅</div>`;
+  const alertCard=`<div class="card alert"><h3>⚠ Dead-deal activity · last 7 days (${alerts.length})</h3>${alertRows}</div>`;
+  // Last 14 days — time spent per account (via related opportunity)
+  const l14=a.last14ByAccount||[];
+  const l14Rows=l14.length?l14.map(x=>{
+    const top=(x.opps&&x.opps[0])||{}; const more=(x.opps||[]).length-1;
+    return `<tr>
+      <td>${esc(x.account)||"—"}</td>
+      <td class="num amt">${hrs(x.minutes)} h</td>
+      <td>${oppLinkId(top.whatId,top.name)}${more>0?` <span class="muted">+${more}</span>`:""}${top.dead?` <span class="pill dead">Dead</span>`:""}</td>
+      <td class="num amt">${fmt(top.amount)}</td>
+      <td class="close">${fmtDate(top.close)}</td></tr>`;
+  }).join("") : `<tr><td colspan="5" class="muted">No customer activity in the last 14 days.</td></tr>`;
+  const l14Card=`<div class="card"><h3>Time spent by account · last 14 days</h3>
+    <table class="ptable"><tr><th>Account</th><th class="num">Time</th><th>Top opportunity</th><th class="num">Amount</th><th class="close">Close</th></tr>${l14Rows}</table></div>`;
   const recent=(a.recent||[]).slice(0,60).map(e=>`<div class="actitem">
-      <div>${catTag(e.category)} ${esc(e.subject)||"(no subject)"} ${e.whatId?`<a href="https://org62.lightning.force.com/lightning/r/${esc(e.whatId)}/view" target="_blank" rel="noopener">↗</a>`:""}</div>
+      <div>${catTag(e.category)} ${e.dead?`<span class="pill dead">Dead</span> `:""}${esc(e.subject)||"(no subject)"} ${e.whatId?`<a href="https://org62.lightning.force.com/lightning/r/${esc(e.whatId)}/view" target="_blank" rel="noopener">↗</a>`:""}</div>
       <div class="meta">${fmtDate(e.date)} · ${esc(e.type)} · ${e.mins} min${e.what?` · ${esc(e.what)}`:""}</div></div>`).join("");
   return `<div class="ttrack">${summary}${catCards}</div>
     <div class="card"><h3>Time spent by month — by category</h3><div class="months">${bars}</div>
       <div class="legend">${legend}</div></div>
-    <div class="ttrack" style="margin-top:14px">${typeCards}</div>
+    ${alertCard}
+    ${l14Card}
     <div class="sect"><h4>Recent activity</h4>${recent}</div>`;
+}
+function oppLinkId(id,name){
+  const nm=esc(name||"—");
+  return id?`<a href="${SF.replace('/Opportunity/','/')}${esc(id)}/view" target="_blank" rel="noopener">${nm}</a>`:nm;
 }
 
 // ---- generic sortable/filterable table ------------------------------------
