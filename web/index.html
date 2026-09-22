@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Org62 Command Center</title>
+<style>
+  :root {
+    --bg:#f3f4f7; --card:#fff; --ink:#181818; --mut:#5c6672; --line:#e3e6ea;
+    --accent:#1b5e20; --accent2:#0176d3; --warn:#ba0517; --chip:#eef3ef;
+  }
+  * { box-sizing:border-box; }
+  body { margin:0; font:14px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+         background:var(--bg); color:var(--ink); }
+  header { background:var(--accent); color:#fff; padding:14px 22px; display:flex; align-items:baseline; gap:14px; }
+  header h1 { font-size:17px; margin:0; font-weight:650; }
+  header .sub { color:#cfe3d2; font-size:12px; }
+  .tabs { display:flex; gap:2px; padding:0 22px; background:var(--accent); }
+  .tab { padding:10px 18px; cursor:pointer; color:#cfe3d2; border-bottom:3px solid transparent; font-weight:600; }
+  .tab.active { color:#fff; border-bottom-color:#fff; background:rgba(255,255,255,.08); }
+  main { padding:20px 22px; }
+  .bar { display:flex; align-items:center; gap:14px; margin-bottom:12px; flex-wrap:wrap; }
+  .stat { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:8px 14px; }
+  .stat b { font-size:18px; } .stat span { color:var(--mut); font-size:12px; display:block; }
+  .badge { font-size:11px; padding:3px 9px; border-radius:20px; font-weight:700; }
+  .badge.live { background:#e3f3e6; color:var(--accent); }
+  .badge.snapshot { background:#fef3cd; color:#8a6d00; }
+  input[type=search] { flex:1; min-width:200px; padding:9px 12px; border:1px solid var(--line); border-radius:8px; font-size:14px; }
+  table { width:100%; border-collapse:collapse; background:var(--card); border:1px solid var(--line);
+          border-radius:12px; overflow:hidden; }
+  th, td { text-align:left; padding:9px 12px; border-bottom:1px solid var(--line); vertical-align:top; }
+  th { background:#fafbfc; font-size:12px; color:var(--mut); text-transform:uppercase; letter-spacing:.03em;
+       cursor:pointer; user-select:none; white-space:nowrap; }
+  th.num, td.num { text-align:right; white-space:nowrap; }
+  tr:hover td { background:#f8faf8; }
+  .amt { font-variant-numeric:tabular-nums; font-weight:600; }
+  .chip { background:var(--chip); color:var(--accent); border-radius:6px; padding:1px 7px; font-size:12px; font-weight:600; }
+  .ctry { font-weight:700; color:var(--accent2); }
+  .warn { color:var(--warn); font-weight:700; }
+  .err { background:#fdecea; color:var(--warn); border:1px solid #f5c6cb; padding:8px 12px; border-radius:8px;
+         margin-bottom:12px; font-size:13px; }
+  .muted { color:var(--mut); }
+</style>
+</head>
+<body>
+<header>
+  <h1>Org62 Command Center</h1>
+  <span class="sub">Ron Shpilman · FY27 · Field Service ANZ</span>
+</header>
+<div class="tabs">
+  <div class="tab active" data-tab="deals">My Deals</div>
+  <div class="tab" data-tab="whitespace">ANZ FSL White Space</div>
+</div>
+<main>
+  <div id="err" class="err" style="display:none"></div>
+  <div class="bar">
+    <div class="stat"><b id="s-count">–</b><span>opportunities</span></div>
+    <div class="stat"><b id="s-total">–</b><span>total value</span></div>
+    <span id="s-src" class="badge live">live</span>
+    <input id="q" type="search" placeholder="Filter by name / account / owner…">
+  </div>
+  <table id="tbl"><thead></thead><tbody></tbody></table>
+</main>
+<script>
+const fmt = n => n==null ? "—" : "$"+Math.round(n).toLocaleString();
+const daysSince = d => { if(!d) return null; const x=(Date.now()-new Date(d))/86400000; return isNaN(x)?null:Math.floor(x); };
+
+const COLS = {
+  deals: [
+    {k:"name",  t:"Opportunity"},
+    {k:"stage", t:"Stage"},
+    {k:"close", t:"Close"},
+    {k:"amount",t:"Amount", num:true, fmt:fmt},
+    {k:"lastActivity", t:"Last activity", render:v=>{const d=daysSince(v); return (d!=null&&d>=90)?`<span class="warn">${v||"none"} ⚠</span>`:(v||"—");}},
+  ],
+  whitespace: [
+    {k:"amount", t:"Amount", num:true, fmt:fmt},
+    {k:"country",t:"Ctry", render:v=>`<span class="ctry">${v||"?"}</span>`},
+    {k:"stage",  t:"Stg", render:v=>`<span class="chip">${v||""}</span>`},
+    {k:"close",  t:"Close"},
+    {k:"account",t:"Account"},
+    {k:"owner",  t:"Owner (AE)"},
+    {k:"name",   t:"Opportunity"},
+  ]
+};
+
+let state = {tab:"deals", data:{}, sortKey:null, sortDir:-1, q:""};
+
+async function load(tab){
+  if(!state.data[tab]){
+    const r = await fetch("/api/"+tab);
+    state.data[tab] = await r.json();
+  }
+  render();
+}
+
+function render(){
+  const tab = state.tab, payload = state.data[tab]||{rows:[]};
+  document.getElementById("s-count").textContent = payload.count ?? payload.rows.length;
+  document.getElementById("s-total").textContent = fmt(payload.total||0);
+  const src = document.getElementById("s-src");
+  src.textContent = payload.source||"live"; src.className = "badge "+(payload.source||"live");
+  const err = document.getElementById("err");
+  if(payload.error){ err.style.display="block"; err.textContent="Live query failed, showing snapshot — "+payload.error; }
+  else err.style.display="none";
+
+  const cols = COLS[tab];
+  const q = state.q.toLowerCase();
+  let rows = payload.rows.filter(r => !q ||
+    [r.name,r.account,r.owner].some(v => (v||"").toLowerCase().includes(q)));
+  if(state.sortKey){
+    const k = state.sortKey, dir = state.sortDir;
+    rows = rows.slice().sort((a,b)=>{
+      let x=a[k], y=b[k];
+      if(typeof x==="number"||typeof y==="number"){ x=x||0; y=y||0; return (x-y)*dir; }
+      return String(x||"").localeCompare(String(y||""))*dir;
+    });
+  }
+  document.querySelector("#tbl thead").innerHTML =
+    "<tr>"+cols.map(c=>`<th class="${c.num?'num':''}" data-k="${c.k}">${c.t}${state.sortKey===c.k?(state.sortDir<0?" ▼":" ▲"):""}</th>`).join("")+"</tr>";
+  document.querySelector("#tbl tbody").innerHTML = rows.length ?
+    rows.map(r=>"<tr>"+cols.map(c=>{
+      const v=r[c.k];
+      const cell = c.render ? c.render(v) : (c.fmt ? `<span class="amt">${c.fmt(v)}</span>` : (v==null?"—":v));
+      return `<td class="${c.num?'num':''}">${cell}</td>`;
+    }).join("")+"</tr>").join("")
+    : `<tr><td colspan="${cols.length}" class="muted">No rows.</td></tr>`;
+  document.querySelectorAll("#tbl th").forEach(th=>th.onclick=()=>{
+    const k=th.dataset.k;
+    if(state.sortKey===k) state.sortDir*=-1; else {state.sortKey=k; state.sortDir=-1;}
+    render();
+  });
+}
+
+document.querySelectorAll(".tab").forEach(t=>t.onclick=()=>{
+  document.querySelectorAll(".tab").forEach(x=>x.classList.remove("active"));
+  t.classList.add("active");
+  state.tab=t.dataset.tab; state.sortKey=null; state.sortDir=-1;
+  load(state.tab);
+});
+document.getElementById("q").oninput = e=>{ state.q=e.target.value; render(); };
+load("deals");
+</script>
+</body>
+</html>

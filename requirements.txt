@@ -1,0 +1,4 @@
+slack_bolt>=1.18
+requests>=2.31
+python-dotenv>=1.0
+flask>=3.0

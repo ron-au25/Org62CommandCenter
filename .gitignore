@@ -1,0 +1,8 @@
+.env
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Confidential Org62 pipeline data — never push
+web/snapshot_*.json
