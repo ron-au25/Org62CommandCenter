@@ -123,7 +123,9 @@
   .notebox .lbl { color:var(--mut); font-size:10.5px; text-transform:uppercase; letter-spacing:.04em; margin-bottom:3px; }
   .ptable { width:100%; border-collapse:collapse; font-size:12px; }
   .ptable td { padding:5px 8px; border-bottom:1px solid var(--line); }
-  .ptable td.num { text-align:right; font-variant-numeric:tabular-nums; }
+  .ptable td.num, .ptable th.num { text-align:right; font-variant-numeric:tabular-nums; }
+  .ptable th { position:sticky; top:0; background:var(--panel2); }
+  .scroll { max-height:360px; overflow:auto; border:1px solid var(--line); border-radius:8px; }
   .actitem { font-size:12px; padding:6px 0; border-bottom:1px dashed var(--line); }
   .actitem .meta { color:var(--dim); font-size:11px; }
   .card.alert { border-color:rgba(255,92,92,.4); }
@@ -381,6 +383,20 @@ function viewActivity(){
       <div class="meta">${fmtDate(x.date)} · ${esc(x.subject)||"(no subject)"} · ${x.mins} min</div></div>`).join("")
     : `<div class="muted">No activity logged against dead opportunities in the last 7 days. ✅</div>`;
   const alertCard=`<div class="card alert"><h3>⚠ Dead-deal activity · last 7 days (${alerts.length})</h3>${alertRows}</div>`;
+  // Coverage gaps — business opps in my active accounts where I'm not the contributor
+  const gaps=a.coverageGaps||[];
+  const gapRows=gaps.length?gaps.map(g=>`<tr>
+      <td>${esc(g.account)||"—"}</td>
+      <td>${oppLinkId(g.id,g.name)}</td>
+      <td><span class="chip">${esc(g.type)}</span></td>
+      <td>${esc(g.stage)||"—"}</td>
+      <td class="num amt">${fmt(g.amount)}</td>
+      <td class="close">${fmtDate(g.close)}</td>
+      <td>${esc(g.owner)||"—"}</td></tr>`).join("")
+    : `<tr><td colspan="7" class="muted">No coverage gaps — you're on every business opp in your active accounts. ✅</td></tr>`;
+  const gapCard=`<div class="card alert"><h3>⚑ Coverage gaps · not on the deal (${gaps.length} · ${fmtK(a.coverageGapTotal)})</h3>
+    <div class="muted" style="margin-bottom:8px">Open New/Add-On opps in accounts you're working this FY where you're not the SE contributor.</div>
+    <div class="scroll"><table class="ptable"><thead><tr><th>Account</th><th>Opportunity</th><th>Type</th><th>Stage</th><th class="num">Amount</th><th class="close">Close</th><th>Owner</th></tr></thead><tbody>${gapRows}</tbody></table></div></div>`;
   // Last 14 days — time spent per account (via related opportunity)
   const l14=a.last14ByAccount||[];
   const l14Rows=l14.length?l14.map(x=>{
@@ -401,6 +417,7 @@ function viewActivity(){
     <div class="card"><h3>Time spent by month — by category</h3><div class="months">${bars}</div>
       <div class="legend">${legend}</div></div>
     ${alertCard}
+    ${gapCard}
     ${l14Card}
     <div class="sect"><h4>Recent activity</h4>${recent}</div>`;
 }

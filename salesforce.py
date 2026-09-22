@@ -145,6 +145,36 @@ class Org62:
         )
         return self.query(soql)
 
+    def coverage_gaps(self):
+        """Business opps in accounts I'm actively working this FY that I'm NOT
+        engaged on (not the Deal_Contribution contributor).
+
+        Contributor = Deal_Contribution__c.SE_Name__c (label 'Contributor').
+        Active account = an account with an opp closing this FY where I'm the
+        contributor. Only New Business / Add-On Business (skip Renewal / SOW /
+        Success Plan / Transfer / Upgrade). Open, closing this FY.
+        """
+        uid = self.my_user_id()
+        acct_recs = self.query(
+            "SELECT Opportunity__r.AccountId FROM Deal_Contribution__c "
+            f"WHERE SE_Name__c = '{uid}' AND Opportunity_Close_Date__c = THIS_FISCAL_YEAR"
+        )
+        acct_ids = sorted({(r.get("Opportunity__r") or {}).get("AccountId")
+                           for r in acct_recs if (r.get("Opportunity__r") or {}).get("AccountId")})
+        if not acct_ids:
+            return []
+        ids = ",".join(f"'{a}'" for a in acct_ids)
+        soql = (
+            "SELECT Id, Name, Account.Name, AccountId, Amount, CloseDate, StageName, "
+            "Type, Owner.Name FROM Opportunity "
+            f"WHERE AccountId IN ({ids}) AND IsClosed = false "
+            "AND Type IN ('New Business','Add-On Business') "
+            "AND CloseDate = THIS_FISCAL_YEAR "
+            f"AND Id NOT IN (SELECT Opportunity__c FROM Deal_Contribution__c WHERE SE_Name__c = '{uid}') "
+            "ORDER BY Amount DESC NULLS LAST"
+        )
+        return self.query(soql)
+
     def anz_fsl_whitespace(self):
         """ANZ Field-Service opportunities with no FSL Specialist engaged.
 

@@ -274,11 +274,27 @@ def api_whitespace():
         return jsonify(snap)
 
 
+def flatten_gaps(records):
+    """Coverage-gap opps → flat rows (business opps in my active accounts I'm not on)."""
+    rows = []
+    for o in records:
+        acct = o.get("Account") or {}
+        owner = o.get("Owner") or {}
+        rows.append({"id": o.get("Id"), "name": o.get("Name"), "account": acct.get("Name"),
+                     "amount": o.get("Amount"), "close": o.get("CloseDate"),
+                     "stage": o.get("StageName"), "type": o.get("Type"), "owner": owner.get("Name")})
+    rows.sort(key=lambda r: -(r.get("amount") or 0))
+    return rows
+
+
 @app.route("/api/activity")
 def api_activity():
-    """My Events this FY — Activity Log tab (record-type distribution + time)."""
+    """My Events this FY — Activity Log tab (time, alerts, coverage gaps)."""
     try:
         payload = flatten_activity(org.my_events_fy())
+        gaps = flatten_gaps(org.coverage_gaps())
+        payload["coverageGaps"] = gaps
+        payload["coverageGapTotal"] = sum(r.get("amount") or 0 for r in gaps)
         payload["source"] = "live"
         return jsonify(payload)
     except Exception as e:
