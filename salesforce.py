@@ -152,7 +152,9 @@ class Org62:
         Contributor = Deal_Contribution__c.SE_Name__c (label 'Contributor').
         Active account = an account with an opp closing this FY where I'm the
         contributor. Only New Business / Add-On Business (skip Renewal / SOW /
-        Success Plan / Transfer / Upgrade). Open, closing this FY.
+        Success Plan / Transfer / Upgrade), and only Field-Service opps (an
+        OpportunityLineItem whose Product2.Name contains 'Field Service').
+        Open, closing this FY.
         """
         uid = self.my_user_id()
         acct_recs = self.query(
@@ -170,6 +172,8 @@ class Org62:
             f"WHERE AccountId IN ({ids}) AND IsClosed = false "
             "AND Type IN ('New Business','Add-On Business') "
             "AND CloseDate = THIS_FISCAL_YEAR "
+            "AND Id IN (SELECT OpportunityId FROM OpportunityLineItem "
+            "WHERE Product2.Name LIKE '%Field Service%') "
             f"AND Id NOT IN (SELECT Opportunity__c FROM Deal_Contribution__c WHERE SE_Name__c = '{uid}') "
             "ORDER BY Amount DESC NULLS LAST"
         )
