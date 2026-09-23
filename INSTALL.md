@@ -35,6 +35,12 @@ source .venv/bin/activate          # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
 ```
 
+> If you copied this folder instead of cloning it fresh (e.g. moved it between
+> drives) and it already had a `.venv`, delete it first — `rm -rf .venv` —
+> before running `python3 -m venv .venv`. A copied `.venv` keeps old absolute
+> paths baked into its scripts (`pip`, `flask`, ...) and `python3 -m venv`
+> won't overwrite them, so `pip install` fails with a `cannot execute` error.
+
 Optional environment settings (defaults work out of the box):
 
 ```bash
