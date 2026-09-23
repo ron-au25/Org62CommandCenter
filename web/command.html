@@ -199,6 +199,16 @@ function fmtDate(d){
   if(isNaN(dt)) return d;
   return String(dt.getDate()).padStart(2,"0")+" "+MONTHS[dt.getMonth()]+" "+String(dt.getFullYear()).slice(-2);
 }
+// Snapshot timestamp: DD Mmm YY HH:MM in Melbourne local time.
+function fmtStamp(d){
+  if(!d) return "";
+  const dt = new Date(d.length<=10 ? d+"T00:00:00" : d);
+  if(isNaN(dt)) return d;
+  const p = new Intl.DateTimeFormat('en-US',{timeZone:'Australia/Melbourne',day:'2-digit',
+    month:'short',year:'2-digit',hour:'2-digit',minute:'2-digit',hour12:false}).formatToParts(dt);
+  const g = t => (p.find(x=>x.type===t)||{}).value||"";
+  return `${g('day')} ${g('month')} ${g('year')} ${g('hour')}:${g('minute')}`;
+}
 const daysSince = d => { if(!d) return null; const x=(Date.now()-new Date(d))/86400000; return isNaN(x)?null:Math.floor(x); };
 const isPast = d => d && new Date(d) < new Date(new Date().toDateString());
 const CAT = c => (c||"").toLowerCase();
@@ -262,7 +272,7 @@ async function fetchAll(){
 function setBadge(f,w){
   const b=document.getElementById("s-src"), err=document.getElementById("err");
   if(f.source==="live"){ b.textContent="live"; b.className="badge live"; err.style.display="none"; }
-  else if(f.live_via==="mcp"){ b.textContent="MCP · "+(f.generated||""); b.className="badge live"; err.style.display="none"; }
+  else if(f.live_via==="mcp"){ b.textContent="Claude snapshot · "+fmtStamp(f.generated); b.className="badge live"; err.style.display="none"; }
   else { b.textContent="snapshot"; b.className="badge snapshot";
     if(f.error||w.error){ err.style.display="block";
       err.textContent="Showing bundled snapshot — no live Org62 connection. "+(f.error||w.error); }
