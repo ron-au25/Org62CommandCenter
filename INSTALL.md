@@ -24,39 +24,44 @@ Install the Salesforce CLI: <https://developer.salesforce.com/tools/salesforcecl
 
 ---
 
-## 2. Clone and set up
+## 2. Clone and run
 
 ```bash
 git clone https://github.com/ron-au25/FieldServiceCommandCenter.git
 cd FieldServiceCommandCenter
+./run.sh
+```
 
-python3 -m venv .venv
-source .venv/bin/activate          # Windows: .venv\Scripts\activate
-pip install -r requirements.txt
+`run.sh` does everything: creates the venv and installs dependencies (first
+run only), opens the browser to log in to Org62 if there's no CLI session yet
+for the `org62` alias, then starts the server. Re-run it any time — it's a
+no-op on setup once the venv and login exist, and just starts the server.
+
+Open <http://127.0.0.1:5057>.
+
+Leave the process running while you use the dashboard. `Ctrl-C` to stop.
+
+Environment overrides (optional, both have working defaults):
+
+- `ORG62_ALIAS` — CLI alias for your Org62 auth (default `org62`).
+- `PORT` — web port (default `5057`; macOS AirPlay owns 5000, so 5057 is used
+  instead).
+
+```bash
+PORT=5099 ./run.sh          # e.g. run on a different port
 ```
 
 > If you copied this folder instead of cloning it fresh (e.g. moved it between
-> drives) and it already had a `.venv`, delete it first — `rm -rf .venv` —
-> before running `python3 -m venv .venv`. A copied `.venv` keeps old absolute
-> paths baked into its scripts (`pip`, `flask`, ...) and `python3 -m venv`
-> won't overwrite them, so `pip install` fails with a `cannot execute` error.
-
-Optional environment settings (defaults work out of the box):
-
-```bash
-cp .env.example .env
-```
-
-- `ORG62_ALIAS` — CLI alias for your Org62 auth (default `org62`).
-- `PORT` — web port (default `5057`).
+> drives) and it already had a `.venv`, `run.sh` detects a broken interpreter
+> and rebuilds the venv automatically. No action needed.
 
 ---
 
-## 3. Connect Org62 (once per machine)
+## 3. Connect Org62 (once per machine — run.sh triggers this automatically)
 
-The app reads whatever session the Salesforce CLI already holds — it calls
-`sf org display --json` and talks to the REST API. So the only setup is a CLI
-login under the alias `org62`.
+`run.sh` calls `sf org login web --alias org62` for you the first time there's
+no session. If you'd rather do it manually, or need to re-auth after a session
+expires:
 
 ```bash
 sf org login web --alias org62
@@ -83,23 +88,18 @@ permission set:
 > **Salesforce CLI (OOTB) Connected App Access**
 > (API name `Salesforce_CLI_OOTB_Connected_App_Access`)
 
-then re-run `sf org login web --alias org62`.
+then re-run `./run.sh` (or `sf org login web --alias org62` directly).
 
 ---
 
-## 4. Run
+## 4. Run manually (if you'd rather not use run.sh)
 
 ```bash
-source .venv/bin/activate          # if not already active
+python3 -m venv .venv
+source .venv/bin/activate          # Windows: .venv\Scripts\activate
+pip install -r requirements.txt
 PORT=5057 python web/server.py
 ```
-
-Open <http://127.0.0.1:5057>.
-
-> On macOS, port **5000** is taken by AirPlay Receiver (returns 403) — use 5057
-> (the default here) or any other free port.
-
-Leave the process running while you use the dashboard. `Ctrl-C` to stop.
 
 ---
 
