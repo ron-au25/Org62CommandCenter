@@ -1,4 +1,12 @@
-# /deals — Slack app for my Org62 opportunities
+# Org62 Command Center + /deals Slack app
+
+> **Web dashboard?** See **[INSTALL.md](INSTALL.md)** for installing and
+> connecting the Org62 Command Center (`web/server.py`) on your machine.
+> The rest of this file covers the Slack `/deals` app.
+
+---
+
+## /deals — Slack app for my Org62 opportunities
 
 A Socket Mode Slack app. Type `/deals` in Slack → get your open Org62
 opportunities (where you're on the Opportunity Team). No public URL, no hosting;
