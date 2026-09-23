@@ -12,7 +12,8 @@ Data owner: Ron Shpilman — SE, Field Service, ANZ region.
   **Salesforce CLI (OOTB) Connected App Access** (API `Salesforce_CLI_OOTB_Connected_App_Access`,
   Id `0PSed000000jM2nGAE`) to the Org62 user, then re-login.
 - Verify: `sf org display --target-org org62` — org ID must start `00D000000000062`.
-- App reads the CLI token via `salesforce.py` (`sf org display --json` → REST v62.0). No code change to go live.
+- App has no Bearer token (Org62 redacts `accessToken` in `sf org display`). `salesforce.py`
+  shells `sf api request rest` per query — CLI supplies its own internal session. No code change to go live.
 
 ## Data model facts (verified against Org62 — do NOT re-derive or assume)
 - My-deal tagging: **OpportunityTeamMember**, `TeamMemberRole = 'Solutions Engineer'`. NOT Deal_Contribution.
