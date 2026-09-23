@@ -204,10 +204,9 @@ def flatten_activity(records):
             o = a["_opps"].setdefault(opp, {"name": opp, "amount": amt, "close": close,
                                             "dead": dead, "whatId": e.get("WhatId"), "mins": 0})
             o["mins"] += mins
-        if len(recent) < 150:
-            recent.append({"subject": e.get("Subject"), "type": (e.get("RecordType") or {}).get("Name") or "—",
-                           "date": dt, "mins": mins, "what": opp, "whatId": e.get("WhatId"),
-                           "category": cat, "account": acct, "amount": amt, "close": close, "dead": dead})
+        recent.append({"subject": e.get("Subject"), "type": (e.get("RecordType") or {}).get("Name") or "—",
+                       "date": dt, "mins": mins, "what": opp, "whatId": e.get("WhatId"),
+                       "category": cat, "account": acct, "amount": amt, "close": close, "dead": dead})
     n_months = len(by_month) or 1
     avg_monthly = round(total_min / n_months)
     last14 = []
