@@ -1,16 +1,16 @@
 """Thin Org62 client.
 
-Gets a live access token from the Salesforce CLI (whatever `sf` already has
-authorized for the target alias) and runs SOQL over the REST API. No OAuth app
-approval needed at runtime — it reuses the CLI session, so the `access-token`
-(sid) login path works even though web OAuth is blocked in Org62.
+Runs SOQL against Org62 through the Salesforce CLI. Org62 REDACTS the access
+token in `sf org display` output, so we can't grab a Bearer token and call REST
+ourselves. Instead we let the CLI make the REST call with its own (internal,
+unredacted) session via `sf api request rest`, which needs no token reveal.
+Requires a CLI login for the alias: `sf org login web --alias org62`.
 """
 import json
 import subprocess
+import urllib.parse
 
-import requests
-
-API_VERSION = "v62.0"
+API_VERSION = "v64.0"
 
 
 class Org62:
@@ -34,36 +34,39 @@ class Org62:
 
     def _auth(self):
         res = self._display()
-        self._token = res["accessToken"]
         self._instance = res["instanceUrl"]
         self._username = res.get("username")
-        return self._token, self._instance
+        return self._instance
 
     def token(self):
-        if not self._token:
+        # Kept for callers that want the instance URL; the token itself is
+        # redacted by Org62 and never used directly (see module docstring).
+        if not self._instance:
             self._auth()
-        return self._token, self._instance
+        return None, self._instance
 
     # --- queries ----------------------------------------------------------
+    def _rest(self, path):
+        """GET an Org62 REST path via the CLI (it supplies its own session)."""
+        out = subprocess.run(
+            ["sf", "api", "request", "rest", path, "--target-org", self.alias],
+            capture_output=True,
+            text=True,
+        )
+        if out.returncode != 0:
+            raise RuntimeError(f"`sf api request rest` failed: {out.stderr or out.stdout}")
+        return json.loads(out.stdout)
+
     def query(self, soql):
-        token, instance = self.token()
-        url = f"{instance}/services/data/{API_VERSION}/query"
-
-        def _do():
-            return requests.get(
-                url,
-                headers={"Authorization": f"Bearer {token}"},
-                params={"q": soql},
-                timeout=30,
-            )
-
-        r = _do()
-        if r.status_code == 401:  # stale session token — re-auth once
-            self._token = None
-            token, instance = self.token()
-            r = _do()
-        r.raise_for_status()
-        return r.json()["records"]
+        path = f"/services/data/{API_VERSION}/query?q={urllib.parse.quote(soql)}"
+        records = []
+        while True:
+            data = self._rest(path)
+            records.extend(data.get("records", []))
+            nxt = data.get("nextRecordsUrl")
+            if not nxt:
+                return records
+            path = nxt
 
     def my_user_id(self):
         if self._user_id:
