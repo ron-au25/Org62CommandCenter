@@ -1,7 +1,7 @@
 # Org62 Command Center — project instructions
 
 ## What this is
-2-tab web app (Flask) + Slack `/deals` app over Org62 (Salesforce internal prod).
+2-tab web app (Flask) over Org62 (Salesforce internal prod).
 Data owner: Ron Shpilman — SE, Field Service, ANZ region.
 
 ## Org62 connection (the durable path)

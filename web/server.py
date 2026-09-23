@@ -14,7 +14,7 @@ import sys
 
 from flask import Flask, jsonify, send_from_directory
 
-# salesforce.py lives one level up, in slack-deals/
+# salesforce.py lives one level up, in FieldServiceCommandCenter/
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.dirname(HERE))
 from salesforce import Org62  # noqa: E402

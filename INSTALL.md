@@ -27,8 +27,8 @@ Install the Salesforce CLI: <https://developer.salesforce.com/tools/salesforcecl
 ## 2. Clone and set up
 
 ```bash
-git clone https://github.com/ron-au25/org62-command-center.git
-cd org62-command-center            # (folder name may differ from repo name)
+git clone https://github.com/ron-au25/FieldServiceCommandCenter.git
+cd FieldServiceCommandCenter
 
 python3 -m venv .venv
 source .venv/bin/activate          # Windows: .venv\Scripts\activate
@@ -38,7 +38,7 @@ pip install -r requirements.txt
 Optional environment settings (defaults work out of the box):
 
 ```bash
-cp .env.example .env               # only needed for the Slack /deals app
+cp .env.example .env
 ```
 
 - `ORG62_ALIAS` — CLI alias for your Org62 auth (default `org62`).
