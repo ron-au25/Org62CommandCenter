@@ -3,6 +3,7 @@ __pycache__/
 *.pyc
 .venv/
 venv/
+.DS_Store
 
 # Confidential Org62 pipeline data — never push
 web/snapshot_*.json
