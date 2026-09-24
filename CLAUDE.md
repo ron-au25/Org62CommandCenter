@@ -8,9 +8,14 @@ Data owner: Ron Shpilman — SE, Field Service, ANZ region.
 - Alias: **org62**. Always pass `--target-org org62` explicitly (no reliance on default org).
 - Auth = SF CLI browser SSO, stored encrypted in `~/.sfdx/`. NOT the `sid` access-token hack, NOT JWT.
 - Login: `sf org login web --alias org62`
-- If `OAUTH_APP_ACCESS_DENIED` or `OAUTH_AUTHORIZATION_BLOCKED` (cross-org): assign perm set
+- If `OAUTH_APP_ACCESS_DENIED` or `OAUTH_AUTHORIZATION_BLOCKED` (cross-org): user needs perm set
   **Salesforce CLI (OOTB) Connected App Access** (API `Salesforce_CLI_OOTB_Connected_App_Access`,
-  Id `0PSed000000jM2nGAE`) to the Org62 user, then re-login.
+  Id `0PSed000000jM2nGAE`). NOT a self-service/admin toggle — it's gated behind a **TechForce
+  intake request** (BaseCamp: `techforce-salesforce-cli-connected-app-org62-access-intake-request`),
+  assigned only after approval. Intake needs 4 answers: (1) client app name, (2) use case + why the
+  OOTB CLI app, (3) read-only vs read/write, (4) frequency. **AI/LLM use cases are NOT permitted**
+  through this connected app — describe this app as the read-only Flask dashboard it is, no AI framing.
+  Full approvable answer set + steps are in INSTALL.md → "If login is blocked". Then re-login.
 - Verify: `sf org display --target-org org62` — org ID must start `00D000000000062`.
 - App has no Bearer token (Org62 redacts `accessToken` in `sf org display`). `salesforce.py`
   shells `sf api request rest` per query — CLI supplies its own internal session. No code change to go live.

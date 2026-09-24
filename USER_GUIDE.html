@@ -139,10 +139,59 @@ cd FieldServiceCommandCenter</code></pre>
   <pre><code>sf org display --target-org org62</code></pre>
   <p>The <b>Org Id</b> should start with <code>00D000000000062</code> — that's Org62.</p>
 
-  <div class="warn"><b>If login is blocked</b> with <code>OAUTH_APP_ACCESS_DENIED</code> or
-  <code>OAUTH_AUTHORIZATION_BLOCKED</code>: the CLI's connected app isn't enabled for your user. Ask an
-  Org62 admin to assign you the permission set <b>“Salesforce CLI (OOTB) Connected App Access”</b>
-  (<span class="mono">Salesforce_CLI_OOTB_Connected_App_Access</span>), then run <code>./run.sh</code> again.</div>
+  <h3>If login is blocked — requesting the permission set</h3>
+  <p>If login fails with <code>OAUTH_APP_ACCESS_DENIED</code> or <code>OAUTH_AUTHORIZATION_BLOCKED</code>,
+  your Org62 user isn't yet authorized for the Salesforce CLI connected app. You need this permission set:</p>
+  <div class="card" style="padding:14px 20px">
+    <b>Salesforce CLI (OOTB) Connected App Access</b><br>
+    <span class="mono">Salesforce_CLI_OOTB_Connected_App_Access</span> · Id <span class="mono">0PSed000000jM2nGAE</span>
+  </div>
+  <div class="warn"><b>This is not a self-service toggle, and not something a local admin simply grants.</b>
+  It's gated behind a <b>TechForce intake request</b>, and the perm set is assigned to your user only
+  after that request is reviewed and approved.</div>
+
+  <h3>How to request it</h3>
+  <div class="card">
+    <div class="step"><div class="n">1</div><div class="b">
+      <h3>Open the intake form</h3>
+      <p>Find <b>“Salesforce CLI Connected App — Org62 Access Intake Request”</b> on BaseCamp (search for
+      <span class="mono">techforce-salesforce-cli-connected-app-org62-access-intake-request</span>). Or ask
+      Slackbot: <em>“I want to build an app to connect to org62 — I need this perm set in my org62. How can
+      I get it?”</em> and it will link the form directly.</p>
+    </div></div>
+    <div class="step"><div class="n">2</div><div class="b">
+      <h3>Answer all four questions</h3>
+      <p>The submission is bounced back unless it answers every one. Here's a proven, approvable set for
+      this app — copy and adapt to your own details:</p>
+      <table>
+        <tr><th>#</th><th>Question</th><th>Answer for this app</th></tr>
+        <tr><td>1</td><td>What application is connecting (specific client name)</td>
+            <td><b>Org62 Command Center</b> — a single-user Python/Flask dashboard I run locally
+            (<span class="mono">web/server.py</span>), bound to <span class="mono">127.0.0.1</span>.
+            Authenticates by reusing my Salesforce CLI session and reads via REST API v62.0. Not a
+            pipeline or shared service.</td></tr>
+        <tr><td>2</td><td>Use case — why the <em>default CLI</em> connected app specifically</td>
+            <td>Personal SE dashboard over <b>my own</b> Org62 records (opportunities, pipeline, ANZ
+            Field Service white-space, my activity/time) for fiscal-year planning. It has no Connected
+            App of its own by design; it uses the OOTB CLI app as the sanctioned way to turn my CLI
+            login into a REST token, rather than registering a bespoke app. <b>No AI/ML/LLM
+            component</b> — it just renders SOQL results in a browser.</td></tr>
+        <tr><td>3</td><td>Read-only or read/write</td>
+            <td><b>Read-only.</b> SELECT SOQL only; no write code path.</td></tr>
+        <tr><td>4</td><td>Frequency</td>
+            <td><b>Manual / interactive only</b> — queries fire when I open the dashboard or click
+            Refresh. No scheduler, no triggers. Low volume, one machine, working hours.</td></tr>
+      </table>
+    </div></div>
+    <div class="step"><div class="n">3</div><div class="b">
+      <h3>After approval, log in</h3>
+      <p>Once the perm set is assigned to your user, run <code>./run.sh</code> again (or
+      <code>sf org login web --alias org62</code>) and the login will go through.</p>
+    </div></div>
+  </div>
+  <div class="warn"><b>Keep the request read-only and AI-free.</b> AI/LLM use cases (Claude Code, AI
+  Expert Suite, etc.) are <b>not permitted</b> through this connected app — so describe the tool as the
+  plain read-only Flask dashboard it is. That framing is what makes it approvable here.</div>
 
   <h2 id="navigate">5. Navigating the dashboard</h2>
   <p>Across the top is a <b>KPI band</b> (headline numbers), and below it <b>five tabs</b>. A status badge
@@ -214,8 +263,10 @@ cd FieldServiceCommandCenter</code></pre>
     <tr><td>Views empty, badge says <span class="pill snap">snapshot</span> with an error</td>
         <td>Login is missing or expired. Run <code>sf org login web --alias org62</code>, verify with
         <code>sf org display --target-org org62</code>, then reload.</td></tr>
-    <tr><td><code>OAUTH_APP_ACCESS_DENIED</code> on login</td>
-        <td>Get the permission set in section 4 assigned, then log in again.</td></tr>
+    <tr><td><code>OAUTH_APP_ACCESS_DENIED</code> / <code>OAUTH_AUTHORIZATION_BLOCKED</code> on login</td>
+        <td>You don't have the connected-app perm set. It's granted via a TechForce intake request, not
+        a local admin — see <a href="#connect">section 4 → “If login is blocked”</a> for the form and the
+        four answers to submit.</td></tr>
     <tr><td>Won't start / port error on 5000</td>
         <td>Use another port: <code>PORT=5057 ./run.sh</code> (macOS AirPlay owns 5000).</td></tr>
     <tr><td><code>ModuleNotFoundError</code> when running manually</td>

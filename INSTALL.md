@@ -79,16 +79,42 @@ sf org display --target-org org62
 The **Org Id** must start with `00D000000000062` (that's Org62). You should
 also see an `Access Token` and `Instance Url`.
 
-### If login is blocked
+### If login is blocked (you don't have the perm set)
 
-`OAUTH_APP_ACCESS_DENIED` / `OAUTH_AUTHORIZATION_BLOCKED` means the Salesforce
-CLI connected app is restricted for your user. Ask an Org62 admin to assign the
-permission set:
+`OAUTH_APP_ACCESS_DENIED` / `OAUTH_AUTHORIZATION_BLOCKED` means your Org62 user
+isn't authorized for the Salesforce CLI connected app. You need this permission
+set assigned:
 
 > **Salesforce CLI (OOTB) Connected App Access**
-> (API name `Salesforce_CLI_OOTB_Connected_App_Access`)
+> (API name `Salesforce_CLI_OOTB_Connected_App_Access`, Id `0PSed000000jM2nGAE`)
 
-then re-run `./run.sh` (or `sf org login web --alias org62` directly).
+**This is not a self-service toggle and not something a local admin just grants** —
+it's gated behind a TechForce intake request, and the perm set is assigned to
+your user only after that request is reviewed and approved.
+
+**How to request it:**
+
+1. Open the intake form: **Salesforce CLI Connected App — Org62 Access Intake
+   Request** (search BaseCamp for `techforce-salesforce-cli-connected-app-org62-access-intake-request`,
+   or ask Slackbot: *"I want to build an app to connect to org62 — I need this
+   perm set in my org62. How can I get it?"* — it links the form directly).
+2. The submission must answer **all four** questions below or it gets bounced back.
+3. After approval, the perm set is assigned to your user. Then re-run `./run.sh`
+   (or `sf org login web --alias org62`) and the login will go through.
+
+**The four required answers** (a proven, approvable set for this app — read-only,
+no AI component; AI/LLM use cases such as Claude Code are *not* permitted through
+this connected app, so describe it as the plain Flask dashboard it is):
+
+| # | Question | Answer for this app |
+|---|----------|---------------------|
+| 1 | What application is connecting (specific client name) | **Org62 Command Center** — a single-user Python/Flask dashboard run locally (`web/server.py`), bound to `127.0.0.1`. Authenticates by reusing my Salesforce CLI session and reads via REST API v62.0. Not a pipeline or shared service. |
+| 2 | Use case — why the *default CLI* connected app specifically | Personal SE dashboard over **my own** Org62 records (opportunities, pipeline, ANZ Field Service white-space, my activity/time) for fiscal-year planning. It has no Connected App of its own by design; it uses the OOTB CLI app as the sanctioned way to turn my CLI login into a REST token, rather than registering a bespoke app. **No AI/ML/LLM component** — it just renders SOQL results in a browser. |
+| 3 | Read-only or read/write | **Read-only.** SELECT SOQL only; no write code path. |
+| 4 | Frequency | **Manual / interactive only** — queries fire when I open the dashboard or click Refresh. No scheduler, no triggers. Low volume, one machine, working hours. |
+
+Adjust the wording to your own situation, but keep it read-only and AI-free —
+that's what makes it approvable through this particular connected app.
 
 ---
 
