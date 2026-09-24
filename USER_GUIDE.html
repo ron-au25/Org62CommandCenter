@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Org62 Command Center — User Guide</title>
+<style>
+  :root{ color-scheme: light; }
+  *{ box-sizing:border-box; }
+  body{ margin:0; font:16px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+        color:#1c2430; background:#f5f7fa; }
+  .wrap{ max-width:860px; margin:0 auto; padding:0 24px 80px; }
+  header.hero{ background:linear-gradient(135deg,#2e8b57,#4c9ffe); color:#fff; padding:38px 24px 30px; margin-bottom:8px; }
+  header.hero .inner{ max-width:860px; margin:0 auto; display:flex; align-items:center; gap:16px; }
+  .logo{ width:46px; height:46px; border-radius:11px; background:rgba(255,255,255,.18);
+         display:flex; align-items:center; justify-content:center; font-weight:800; font-size:20px; }
+  header.hero h1{ margin:0; font-size:24px; font-weight:750; letter-spacing:.2px; }
+  header.hero p{ margin:3px 0 0; opacity:.92; font-size:14px; }
+  h2{ font-size:19px; margin:34px 0 10px; padding-bottom:6px; border-bottom:2px solid #e2e8f0; }
+  h3{ font-size:15.5px; margin:22px 0 6px; }
+  p{ margin:10px 0; }
+  code,.mono{ font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; font-size:13.5px;
+        background:#eef2f7; padding:1.5px 6px; border-radius:5px; color:#0f3d2e; }
+  pre{ background:#0f1521; color:#e6ebf2; border-radius:10px; padding:14px 16px; overflow:auto; font-size:13.5px;
+        line-height:1.5; }
+  pre code{ background:none; color:inherit; padding:0; }
+  .card{ background:#fff; border:1px solid #e2e8f0; border-radius:12px; padding:4px 20px; margin:14px 0;
+         box-shadow:0 1px 2px rgba(16,24,40,.04); }
+  .step{ display:flex; gap:14px; align-items:flex-start; padding:16px 0; border-bottom:1px solid #eef2f7; }
+  .step:last-child{ border-bottom:none; }
+  .step .n{ flex:0 0 30px; height:30px; border-radius:50%; background:#2e8b57; color:#fff; font-weight:700;
+            display:flex; align-items:center; justify-content:center; font-size:14px; }
+  .step .b{ flex:1; }
+  .step .b h3{ margin:2px 0 4px; }
+  .note{ background:#eaf4ff; border-left:4px solid #4c9ffe; border-radius:8px; padding:12px 16px; margin:14px 0; font-size:14.5px; }
+  .warn{ background:#fff6e6; border-left:4px solid #ffb020; border-radius:8px; padding:12px 16px; margin:14px 0; font-size:14.5px; }
+  .ok{ background:#eafaf0; border-left:4px solid #37c871; border-radius:8px; padding:12px 16px; margin:14px 0; font-size:14.5px; }
+  table{ width:100%; border-collapse:collapse; margin:14px 0; background:#fff; border:1px solid #e2e8f0; border-radius:10px; overflow:hidden; }
+  th,td{ text-align:left; padding:10px 13px; border-bottom:1px solid #eef2f7; font-size:14px; vertical-align:top; }
+  th{ background:#f0f4f9; font-size:12px; text-transform:uppercase; letter-spacing:.04em; color:#5c6a7e; }
+  tr:last-child td{ border-bottom:none; }
+  .tabname{ font-weight:700; color:#1f6f45; white-space:nowrap; }
+  .pill{ display:inline-block; border-radius:20px; padding:2px 10px; font-size:12px; font-weight:700; }
+  .pill.live{ background:rgba(55,200,113,.15); color:#1f9d57; }
+  .pill.snap{ background:rgba(255,176,32,.18); color:#b57900; }
+  ul{ margin:8px 0; padding-left:22px; } li{ margin:5px 0; }
+  .toc{ font-size:14.5px; }
+  .toc a{ color:#2b6cb0; text-decoration:none; } .toc a:hover{ text-decoration:underline; }
+  .kbd{ font-family:ui-monospace,monospace; background:#fff; border:1px solid #cbd5e0; border-bottom-width:2px;
+        border-radius:5px; padding:1px 6px; font-size:12.5px; }
+  footer{ text-align:center; color:#8b97a8; font-size:12.5px; margin-top:40px; }
+</style>
+</head>
+<body>
+<header class="hero">
+  <div class="inner">
+    <div class="logo">62</div>
+    <div>
+      <h1>Org62 Command Center</h1>
+      <p>User guide — setup &amp; navigation · a local, read-only dashboard over your own Org62 opportunities</p>
+    </div>
+  </div>
+</header>
+
+<div class="wrap">
+
+  <div class="card toc">
+    <h3 style="margin-top:14px">On this page</h3>
+    <ul>
+      <li><a href="#what">1. What this app is</a></li>
+      <li><a href="#prereq">2. Before you start (prerequisites)</a></li>
+      <li><a href="#setup">3. First-time setup &amp; running it</a></li>
+      <li><a href="#connect">4. Connecting to Org62 (login)</a></li>
+      <li><a href="#navigate">5. Navigating the dashboard</a></li>
+      <li><a href="#settings">6. Settings (⚙)</a></li>
+      <li><a href="#data">7. Where the data comes from</a></li>
+      <li><a href="#trouble">8. Troubleshooting</a></li>
+    </ul>
+  </div>
+
+  <h2 id="what">1. What this app is</h2>
+  <p>The Org62 Command Center is a small web app that runs <b>on your own machine</b> and gives you a
+  single dashboard over <b>your own</b> Org62 opportunities — pipeline, forecast, ANZ Field Service
+  white space, coaching signals, and how your time is spent. It is built for a Solution Engineer's
+  view: it centres on the deals <em>you're tagged on as a contributor</em>, not deals you own.</p>
+  <div class="ok"><b>Safe by design.</b> It is <b>read-only</b> — it only ever runs SELECT queries and
+  never writes back to Salesforce. It binds to <code>127.0.0.1</code> (your machine only, not reachable
+  by anyone else), and it stores no passwords: it reuses the login token from the Salesforce CLI.</div>
+
+  <h2 id="prereq">2. Before you start (prerequisites)</h2>
+  <p>You need four things. Check each in Terminal:</p>
+  <table>
+    <tr><th>Tool</th><th>Why</th><th>Check</th></tr>
+    <tr><td><b>Python 3.10+</b></td><td>Runs the app</td><td><code>python3 --version</code></td></tr>
+    <tr><td><b>Git</b></td><td>To clone the app</td><td><code>git --version</code></td></tr>
+    <tr><td><b>Salesforce CLI (<span class="mono">sf</span>)</b></td><td>Handles the Org62 login</td><td><code>sf --version</code></td></tr>
+    <tr><td><b>Org62 access</b></td><td>An active user who can sign in at org62.my.salesforce.com</td><td>Try logging in via browser</td></tr>
+  </table>
+  <p>If you don't have the Salesforce CLI, install it (macOS):</p>
+  <pre><code>brew install --cask sf</code></pre>
+  <p>…or use the platform installer from <span class="mono">developer.salesforce.com/tools/salesforcecli</span>.</p>
+
+  <h2 id="setup">3. First-time setup &amp; running it</h2>
+  <p>The app ships with a one-shot script, <code>run.sh</code>, that does everything: builds its Python
+  environment the first time, prompts you to log in to Org62 if needed, then starts the server.</p>
+
+  <div class="card">
+    <div class="step"><div class="n">1</div><div class="b">
+      <h3>Open the app folder in Terminal</h3>
+      <p>If you already have the folder, just <code>cd</code> into it. If you're getting it fresh:</p>
+      <pre><code>git clone https://github.com/ron-au25/FieldServiceCommandCenter.git
+cd FieldServiceCommandCenter</code></pre>
+    </div></div>
+    <div class="step"><div class="n">2</div><div class="b">
+      <h3>Run it</h3>
+      <pre><code>./run.sh</code></pre>
+      <p>First run takes a moment while it builds its environment. On later runs it starts almost instantly.</p>
+    </div></div>
+    <div class="step"><div class="n">3</div><div class="b">
+      <h3>Open the dashboard</h3>
+      <p>When you see <span class="mono">Starting Org62 Command Center on http://127.0.0.1:5057</span>,
+      open that address in your browser:</p>
+      <pre><code>http://127.0.0.1:5057</code></pre>
+      <p>Leave the Terminal window running while you use the dashboard. Press <span class="kbd">Ctrl</span>+<span class="kbd">C</span> to stop it.</p>
+    </div></div>
+  </div>
+
+  <div class="note"><b>Different port?</b> If port 5057 is busy, start it on another one:
+  <code>PORT=5099 ./run.sh</code> then open <span class="mono">http://127.0.0.1:5099</span>.
+  (On macOS, port 5000 is taken by AirPlay — that's why the default is 5057.)</div>
+
+  <h2 id="connect">4. Connecting to Org62 (login)</h2>
+  <p>The very first time, <code>run.sh</code> notices there's no Org62 session and opens your browser to
+  log in automatically. Complete your normal Org62 SSO. That's it — the CLI stores an encrypted token
+  and the app reuses it.</p>
+  <p>To log in (or re-login after a session expires) manually:</p>
+  <pre><code>sf org login web --alias org62</code></pre>
+  <p>Confirm it worked:</p>
+  <pre><code>sf org display --target-org org62</code></pre>
+  <p>The <b>Org Id</b> should start with <code>00D000000000062</code> — that's Org62.</p>
+
+  <div class="warn"><b>If login is blocked</b> with <code>OAUTH_APP_ACCESS_DENIED</code> or
+  <code>OAUTH_AUTHORIZATION_BLOCKED</code>: the CLI's connected app isn't enabled for your user. Ask an
+  Org62 admin to assign you the permission set <b>“Salesforce CLI (OOTB) Connected App Access”</b>
+  (<span class="mono">Salesforce_CLI_OOTB_Connected_App_Access</span>), then run <code>./run.sh</code> again.</div>
+
+  <h2 id="navigate">5. Navigating the dashboard</h2>
+  <p>Across the top is a <b>KPI band</b> (headline numbers), and below it <b>five tabs</b>. A status badge
+  in the header tells you where the data came from: <span class="pill live">live</span> = queried Org62
+  just now; <span class="pill snap">snapshot</span> = showing a bundled fallback because the live
+  connection wasn't available. The <b>↻ Refresh</b> button re-syncs with Org62 at any time.</p>
+
+  <h3>The KPI band</h3>
+  <p>Six cards at a glance: Closed Won (this fiscal year), Open Pipeline, Pipeline at Risk (stale / no
+  next step / past close date), New Business (ANZ white space, with how many are aligned to your SEs),
+  Time Spent this quarter, and a Dead/Excluded count.</p>
+
+  <h3>The five tabs</h3>
+  <table>
+    <tr><th>Tab</th><th>What it shows</th></tr>
+    <tr><td><span class="tabname">Open Pipe</span></td>
+        <td>Your open opportunities, with a forecast-mix bar (Commit / Best Case / Pipeline). Columns
+        include stage, Core SE, Service AE, close date, amount, and last activity (stale deals are
+        flagged ⚠). This is your day-to-day “current opportunities” view.</td></tr>
+    <tr><td><span class="tabname">Closed Pipe</span></td>
+        <td>Deals that have closed. Shows Closed Won total; a <b>“Show dead”</b> toggle reveals lost/dead deals.</td></tr>
+    <tr><td><span class="tabname">New Business (ANZ White Space)</span></td>
+        <td>ANZ opportunities with in-scope product where you're <em>not</em> yet tagged — i.e. new
+        opportunities to pursue. Rows aligned to your Service AEs are highlighted; a <b>“Show only
+        aligned”</b> toggle filters to those.</td></tr>
+    <tr><td><span class="tabname">Forecasting Coach</span></td>
+        <td>Open deals that need attention, ranked by number of signals: past close date, stale (90+
+        days no activity), no next step, or no amount.</td></tr>
+    <tr><td><span class="tabname">Activity Log</span></td>
+        <td>Where your time goes: this-quarter hours vs. your target, a by-quarter breakdown
+        (Customer Facing / Customer Related / Non-customer), dead-deal activity alerts, coverage gaps
+        (business deals in your accounts you're not on), time-by-account for the last 14 days, and a
+        month-by-month activity calendar.</td></tr>
+  </table>
+
+  <div class="note"><b>Handy interactions on every table:</b> click a <b>column header</b> to sort,
+  type in the <b>filter box</b> to narrow by name / account / owner / stage, and <b>click any row</b>
+  to open a detail drawer with SE &amp; AE notes, activity, and product line items. Opportunity names
+  link straight to the record in Org62.</div>
+
+  <h2 id="settings">6. Settings (⚙)</h2>
+  <p>The gear icon (top right) opens a small panel. Your choices are saved on your machine and persist
+  across restarts.</p>
+  <ul>
+    <li><b>Role mode</b> — <b>FSL</b> (Field Service) or <b>Service Cloud</b>. Switches which product
+    scope and contribution role the white-space and activity views use.</li>
+    <li><b>Quarterly targets (hrs)</b> — your Customer Related and Customer Facing hour goals, used by
+    the target bars on the Activity Log.</li>
+    <li><b>Aligned SEs</b> — a comma-separated list of the Service AE names you're aligned to. Drives
+    the “aligned” highlighting/filtering on the New Business tab and the KPI card.</li>
+    <li><b>Show pipeline movements bar</b> — toggles a scrolling ticker of recent amount / stage /
+    comment changes on your open deals.</li>
+  </ul>
+  <div class="warn"><b>Aligned-SE names must match exactly</b> (case doesn't matter, but a nickname or
+  typo won't match). If your “aligned” count looks suspiciously low or zero, check the spelling against
+  the Service AE names shown in the table rather than assuming there's no data.</div>
+
+  <h2 id="data">7. Where the data comes from</h2>
+  <p>Every view runs a <b>live SOQL query</b> against your Org62 session when the page loads or you hit
+  Refresh. If a live query can't run (no login, expired token), the app falls back to a bundled
+  snapshot <em>only if one exists on your machine</em> — and the badge switches to
+  <span class="pill snap">snapshot</span>. Snapshots are confidential and are not shared, so without a
+  live connection the views will simply be empty and flagged. To go from empty to populated: log in
+  (section 4), confirm <code>sf org display</code> works, and reload the page.</p>
+
+  <h2 id="trouble">8. Troubleshooting</h2>
+  <table>
+    <tr><th>Symptom</th><th>Fix</th></tr>
+    <tr><td>Views empty, badge says <span class="pill snap">snapshot</span> with an error</td>
+        <td>Login is missing or expired. Run <code>sf org login web --alias org62</code>, verify with
+        <code>sf org display --target-org org62</code>, then reload.</td></tr>
+    <tr><td><code>OAUTH_APP_ACCESS_DENIED</code> on login</td>
+        <td>Get the permission set in section 4 assigned, then log in again.</td></tr>
+    <tr><td>Won't start / port error on 5000</td>
+        <td>Use another port: <code>PORT=5057 ./run.sh</code> (macOS AirPlay owns 5000).</td></tr>
+    <tr><td><code>ModuleNotFoundError</code> when running manually</td>
+        <td>Activate the environment and install deps: <code>source .venv/bin/activate</code> then
+        <code>pip install -r requirements.txt</code>. (Or just use <code>./run.sh</code>, which handles this.)</td></tr>
+    <tr><td>Wrong org's data</td>
+        <td>Confirm the alias: <code>sf org display --target-org org62</code> — Org Id must start
+        <code>00D000000000062</code>.</td></tr>
+    <tr><td>Copied the folder and it won't run</td>
+        <td>No action needed — <code>run.sh</code> detects a stale environment and rebuilds it automatically.</td></tr>
+  </table>
+
+  <footer>Org62 Command Center · read-only, loopback-only, no write-back · your login stays in the Salesforce CLI.</footer>
+</div>
+</body>
+</html>
