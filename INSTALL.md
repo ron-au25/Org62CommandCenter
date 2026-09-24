@@ -150,10 +150,28 @@ The queries assume these Org62 facts (see `CLAUDE.md` for the full list):
 - "Field Service product" = `OpportunityLineItem` with `Product2.Name LIKE '%Field Service%'`;
   "Service Cloud product" = `LIKE '%Service Cloud%'` or `LIKE '%Agentforce for Service%'`.
 - Fiscal year = Feb 1 – Jan 31 (`CloseDate = THIS_FISCAL_YEAR`).
+- Service AE = `sfbase__OpportunityTeam__c` ("Selling Role" = `'Service Cloud AE'`); Core SE =
+  `Deal_Contribution__c` (`Opportunity_Role__c = 'Core SE'`).
 
 The dashboard also has a rolling pipeline-movements ticker (recent amount/stage/comment changes on
 your open pipe) and lazy per-opportunity product line items in the detail drawer — both toggled or
-loaded live, no snapshot dependency for either. See `CLAUDE.md` for the query details.
+loaded live, no snapshot dependency for either. The Activity Log tab tracks time by fiscal quarter,
+split Customer Facing / Customer Related / Marketing / Non-customer, and compares your current
+quarter against editable hour targets (Settings gear). See `CLAUDE.md` for the query details.
+
+Open Pipe (and the detail drawer) show **Core SE** and **Service AE** alongside the deal owner —
+Core SE comes from `Deal_Contribution__c` (role `'Core SE'`), Service AE from the managed-package
+`sfbase__OpportunityTeam__c` object's "Selling Role" field. The Stage column is shortened to its
+leading numeric prefix (e.g. `02`).
+
+The New Business (ANZ White Space) tab supports **aligned-SE filtering**: enter a comma-separated
+list of Service AE names you're aligned to in Settings, and the tab highlights/filters whitespace
+opportunities where that Service AE is already engaged, plus adds a "N Aligned ($X)" line to the
+New Business KPI card.
+
+Settings (role mode, ticker toggle, quarterly targets, aligned-SE list) are saved to
+`web/settings_local.json` (git-ignored, machine-local) via `/api/settings`, so they persist across
+restarts — not just in one browser's localStorage.
 
 These are Org62-specific. If another org uses different objects/roles, adjust
 the SOQL in `salesforce.py`.

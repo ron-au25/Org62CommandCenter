@@ -45,6 +45,21 @@
                 padding:6px 4px; font-size:11.5px; font-weight:650; cursor:pointer; }
   .seg button.active { color:var(--accent2); border-color:var(--accent2); background:rgba(76,159,254,.12); }
   .popover .toggle { width:100%; justify-content:space-between; }
+  .tginputs { display:flex; gap:8px; margin-bottom:2px; }
+  .tginputs label { flex:1; font-size:10.5px; color:var(--mut); display:flex; flex-direction:column; gap:3px; }
+  .tginputs input { background:var(--chip); border:1px solid var(--line); border-radius:6px; color:var(--ink);
+                    padding:5px 6px; font-size:12px; width:100%; }
+  .tginputs input:focus { outline:none; border-color:var(--accent2); }
+
+  /* quarterly target progress bars */
+  .tgrow + .tgrow { margin-top:14px; }
+  .tgtop { display:flex; justify-content:space-between; align-items:baseline; font-size:12.5px; margin-bottom:5px; }
+  .tgtop b { font-size:13px; }
+  .tgwrap { position:relative; height:14px; }
+  .tgbar { position:absolute; inset:0; background:var(--chip); border-radius:7px; overflow:hidden; }
+  .tgfill { height:100%; border-radius:7px; }
+  .tgmark { position:absolute; top:-3px; bottom:-3px; width:2px; background:var(--ink); opacity:.55; }
+  .tgmeta { font-size:11px; margin-top:5px; }
 
   /* rolling pipeline-movements ticker */
   #movebar { overflow:hidden; background:var(--panel2); border-bottom:1px solid var(--line); position:sticky; top:57px; z-index:19; }
@@ -106,6 +121,7 @@
   tr[data-id] { cursor:pointer; }
   tr:hover td { background:rgba(76,159,254,.05); }
   tr.dead td { opacity:.5; }
+  tr.aligned td:first-child { border-left:3px solid var(--accent2); }
   .amt { font-variant-numeric:tabular-nums; font-weight:650; }
   .chip { background:var(--chip); color:var(--accent2); border-radius:6px; padding:1px 7px; font-size:11.5px; font-weight:650; }
   .pill { border-radius:6px; padding:1px 7px; font-size:11px; font-weight:700; }
@@ -206,7 +222,16 @@
         <button data-mode="fsl">FSL</button>
         <button data-mode="service_cloud">Service Cloud</button>
       </div>
-      <h4>Display</h4>
+      <h4>Quarterly targets (hrs)</h4>
+      <div class="tginputs">
+        <label>Related <input type="number" id="tg-related" min="0" step="1"></label>
+        <label>Facing <input type="number" id="tg-facing" min="0" step="1"></label>
+      </div>
+      <h4 style="margin-top:14px">Alignment</h4>
+      <label style="display:block">Aligned SEs (comma-separated)
+        <input type="text" id="aligned-ses" placeholder="e.g. Jane Smith, John Doe" style="width:100%;margin-top:4px">
+      </label>
+      <h4 style="margin-top:14px">Display</h4>
       <label class="toggle"><input type="checkbox" id="movetog"> Show pipeline movements bar</label>
     </div>
   </div>
@@ -245,6 +270,12 @@ function fmtDate(d){
   if(isNaN(dt)) return d;
   return String(dt.getDate()).padStart(2,"0")+" "+MONTHS[dt.getMonth()]+" "+String(dt.getFullYear()).slice(-2);
 }
+// Stage "02 - Determining Problem..." -> "02"; no leading digits (e.g. "Dead - Lost") -> unchanged.
+function stageShort(s){
+  if(!s) return "—";
+  const m=s.match(/^(\d+)/);
+  return m?m[1]:s;
+}
 // Snapshot timestamp: DD Mmm YY HH:MM in Melbourne local time.
 function fmtStamp(d){
   if(!d) return "";
@@ -272,9 +303,13 @@ const bizDay = iso => {
 };
 const esc = s => (s==null?"":String(s)).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 // activity categories
-const CATS = { customer:{lab:"Customer", col:"var(--good)"},
-               marketing:{lab:"Marketing", col:"var(--accent2)"},
-               noncustomer:{lab:"Non-customer", col:"var(--warn)"} };
+// mutually-exclusive display bucket: facing > related-only > noncustomer
+// (facing is always a subset of "customer related" per the official Activity
+// Type definitions — see server.py ACTIVITY_TYPE_MAP)
+const CATS = { facing:{lab:"Customer Facing", col:"var(--good)"},
+               related:{lab:"Customer Related (non-facing)", col:"var(--accent2)"},
+               noncustomer:{lab:"Non-customer", col:"var(--mut)"} };
+const QLABELS = {1:"Feb–Apr", 2:"May–Jul", 3:"Aug–Oct", 4:"Nov–Jan"};
 const catTag = c => `<span class="ctag" style="background:${(CATS[c]||{}).col||'var(--dim)'}22;color:${(CATS[c]||{}).col||'var(--mut)'}">${(CATS[c]||{}).lab||c}</span>`;
 // distinct palette for accounts (separate from the category colors)
 const ACCT_PALETTE=["#c792ea","#f78c6c","#42c9c2","#f06292","#82aaff","#c3e88d","#ffcb6b",
@@ -285,22 +320,38 @@ function acctColor(name){
   return ACCT_PALETTE[h%ACCT_PALETTE.length];
 }
 function pctMeta(a){
-  if(!a || a.last30VsAvgPct==null) return (a?.last30Events||0)+" events";
-  const p=a.last30VsAvgPct, arrow=p>=0?"▲":"▼", col=p>=0?"var(--good)":"var(--bad)";
-  return `<span style="color:${col}">${arrow} ${Math.abs(p)}%</span> vs avg month · ${a.last30Events} events`;
+  if(!a || a.currentQuarterVsAvgPct==null) return (a?.currentQuarterEvents||0)+" events";
+  const p=a.currentQuarterVsAvgPct, arrow=p>=0?"▲":"▼", col=p>=0?"var(--good)":"var(--bad)";
+  return `<span style="color:${col}">${arrow} ${Math.abs(p)}%</span> vs avg quarter · ${a.currentQuarterEvents} events`;
 }
 
 let DATA = { forecast:null, whitespace:null, activity:null, movements:null };
-function loadSettings(){
-  try { return { roleMode:"fsl", showMovements:true, ...JSON.parse(localStorage.getItem("cc_settings")||"{}") }; }
-  catch(e){ return { roleMode:"fsl", showMovements:true }; }
+// Settings (role mode, ticker toggle, quarterly targets) are file-backed on
+// the server (/api/settings) so they survive a restart, not just this browser.
+async function loadSettings(){
+  try { return await fetch("/api/settings").then(r=>r.json()); }
+  catch(e){ return { roleMode:"fsl", showMovements:true, targets:{relatedHrs:250, facingHrs:125}, alignedSEs:"" }; }
 }
-function saveSettings(){
-  localStorage.setItem("cc_settings", JSON.stringify({roleMode:state.roleMode, showMovements:state.showMovements}));
+async function saveSettings(){
+  try {
+    await fetch("/api/settings", { method:"POST", headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({roleMode:state.roleMode, showMovements:state.showMovements, targets:state.targets,
+                            alignedSEs:state.alignedSEs}) });
+  } catch(e){ /* best-effort; UI already reflects the change */ }
 }
-const SETTINGS=loadSettings();
 let state = { tab:"open", q:"", sortKey:null, sortDir:-1, showDead:false, actMonth:null,
-              roleMode:SETTINGS.roleMode, showMovements:SETTINGS.showMovements };
+              roleMode:"fsl", showMovements:true, targets:{relatedHrs:250, facingHrs:125},
+              alignedSEs:"", showAlignedOnly:false };
+
+// Aligned-SE helpers: "aligned" = whitespace opp whose Service AE (sfbase__OpportunityTeam__c
+// Selling Role = 'Service Cloud AE') matches one of the comma-separated names in Settings.
+function alignedList(){
+  return (state.alignedSEs||"").split(",").map(s=>s.trim().toLowerCase()).filter(Boolean);
+}
+function isAligned(r){
+  const list=alignedList();
+  return !!(list.length && r.serviceAE && list.includes(r.serviceAE.trim().toLowerCase()));
+}
 
 // live (non-dead) row helpers -------------------------------------------------
 const liveRows   = () => ((DATA.forecast?.rows)||[]).filter(r=>!r.isDead);
@@ -378,12 +429,16 @@ function renderKPIs(){
   const pipeline=open.reduce((s,r)=>s+(r.amount||0),0);
   const atRisk=risk.reduce((s,r)=>s+(r.amount||0),0);
   const act=DATA.activity||{};
+  const wsRows=(DATA.whitespace?.rows)||[];
+  const aligned=wsRows.filter(isAligned);
+  const alignedTotal=aligned.reduce((s,r)=>s+(r.amount||0),0);
   const kpis=[
     {lab:"Closed Won (FY27)", val:fmtK(closedWon), meta:won.length+" deals won"},
     {lab:"Open Pipeline",     val:fmtK(pipeline),  meta:open.length+" open opps"},
     {lab:"Pipeline at Risk",  val:fmtK(atRisk),    meta:risk.length+" flagged", cls:"risk"},
-    {lab:"New Business (ANZ)",val:fmtK(DATA.whitespace?.total), meta:(DATA.whitespace?.count||0)+" white-space opps"},
-    {lab:"Time Spent (30d)",  val:act.last30Minutes!=null?hrs(act.last30Minutes)+" h":"—", meta:pctMeta(act), cls:"time"},
+    {lab:"New Business (ANZ)",val:fmtK(DATA.whitespace?.total),
+     meta:(DATA.whitespace?.count||0)+" white-space opps<br>"+aligned.length+" Aligned ("+fmtK(alignedTotal)+")"},
+    {lab:"Time Spent (Qtr)",  val:act.currentQuarterMinutes!=null?hrs(act.currentQuarterMinutes)+" h":"—", meta:pctMeta(act), cls:"time"},
     {lab:"Dead / Excluded",   val:String(((DATA.forecast?.rows)||[]).filter(r=>r.isDead).length), meta:"omitted from KPIs"},
   ];
   document.getElementById("kpis").innerHTML=kpis.map(k=>`
@@ -436,7 +491,9 @@ function viewOpen(){
     {k:"category",t:"Cat",render:catPill},
     {k:"name",t:"Opportunity",render:(_,r)=>oppLink(r)},
     {k:"account",t:"Account"},
-    {k:"stage",t:"Stage"},
+    {k:"stage",t:"Stage",render:stageShort},
+    {k:"coreSE",t:"Core SE"},
+    {k:"serviceAE",t:"Service AE",render:v=>esc(v)||"—"},
     {k:"close",t:"Close",cls:"close",render:fmtDate},
     {k:"amount",t:"Amount",num:true,fmt:fmt},
     {k:"lastActivity",t:"Last activity",render:v=>{const d=daysSince(v);
@@ -465,15 +522,22 @@ function viewClosed(){
 
 function viewWhitespace(){
   const rows=(DATA.whitespace?.rows)||[];
-  return table(rows,[
+  const alignedN=rows.filter(isAligned).length;
+  const head=`<div class="bar">
+    <label class="toggle"><input type="checkbox" id="aligntog" ${state.showAlignedOnly?"checked":""}> Show only aligned (${alignedN})</label>
+  </div>`;
+  const shown=state.showAlignedOnly?rows.filter(isAligned):rows;
+  return head + table(shown,[
     {k:"amount",t:"Amount",num:true,fmt:fmt},
     {k:"country",t:"Ctry",render:v=>`<span class="ctry">${esc(v)||"?"}</span>`},
     {k:"stage",t:"Stg",render:v=>`<span class="chip">${esc(v)}</span>`},
     {k:"account",t:"Account"},
     {k:"owner",t:"Owner (AE)"},
+    {k:"coreSE",t:"Core SE"},
+    {k:"serviceAE",t:"Service AE"},
     {k:"name",t:"Opportunity",render:(_,r)=>oppLink(r)},
     {k:"close",t:"Close Date",cls:"close",render:fmtDate},
-  ]);
+  ], r=>isAligned(r)?"aligned":"");
 }
 
 function viewCoach(){
@@ -491,13 +555,13 @@ function viewCoach(){
 function viewActivity(){
   const a=DATA.activity; if(!a) return `<div class="note">No activity data.</div>`;
   const catBy=Object.fromEntries((a.byCategory||[]).map(c=>[c.category,c]));
-  // last 30d summary + category cards
-  const pct=a.last30VsAvgPct;
-  const pctStr=pct==null?"":`<span style="color:${pct>=0?'var(--good)':'var(--bad)'}">${pct>=0?'▲':'▼'} ${Math.abs(pct)}%</span> vs avg month (${hrs(a.avgMonthlyMinutes)} h)`;
-  const summary=`<div class="card"><h3>Last 30 days</h3>
-      <div class="val" style="font-size:26px;font-weight:750">${hrs(a.last30Minutes)} h</div>
-      <div class="row"><span class="k">Events</span><b>${a.last30Events}</b></div>
-      <div class="row"><span class="k">vs avg month</span><b>${pctStr||"—"}</b></div>
+  // this-quarter summary + category cards
+  const pct=a.currentQuarterVsAvgPct;
+  const pctStr=pct==null?"":`<span style="color:${pct>=0?'var(--good)':'var(--bad)'}">${pct>=0?'▲':'▼'} ${Math.abs(pct)}%</span> vs avg quarter (${hrs(a.avgQuarterlyMinutes)} h)`;
+  const summary=`<div class="card"><h3>This quarter (${QLABELS[a.currentQuarter]||''})</h3>
+      <div class="val" style="font-size:26px;font-weight:750">${hrs(a.currentQuarterMinutes)} h</div>
+      <div class="row"><span class="k">Events</span><b>${a.currentQuarterEvents}</b></div>
+      <div class="row"><span class="k">vs avg quarter</span><b>${pctStr||"—"}</b></div>
       <div class="row"><span class="k">FY total</span><b>${hrs(a.totalMinutes)} h · ${a.totalEvents} ev</b></div></div>`;
   const catCards=Object.keys(CATS).map(k=>{
     const c=catBy[k]||{count:0,minutes:0};
@@ -508,16 +572,37 @@ function viewActivity(){
       <div class="row"><span class="k">% of FY time</span><b>${p}%</b></div>
       <div class="vbar"><i style="width:${p}%;background:${CATS[k].col}"></i></div></div>`;
   }).join("");
-  // stacked monthly bars (customer / marketing / non-customer)
-  const maxM=Math.max(1,...(a.byMonth||[]).map(m=>m.minutes));
-  const bars=(a.byMonth||[]).map(m=>{
-    const [y,mo]=m.month.split("-");
+  // stacked quarterly bars (facing / related / marketing / non-customer)
+  const maxM=Math.max(1,...(a.byQuarter||[]).map(m=>m.minutes));
+  const bars=(a.byQuarter||[]).map(m=>{
     const seg=k=>{const h=Math.round((m[k]||0)/maxM*120);return h>0?`<i style="height:${h}px;background:${CATS[k].col}"></i>`:"";};
-    return `<div class="m" title="${m.count} events · ${hrs(m.minutes)}h — Cust ${hrs(m.customer)}h / Mktg ${hrs(m.marketing)}h / Non ${hrs(m.noncustomer)}h">
-      <div class="stack" style="height:${Math.round(m.minutes/maxM*120)}px">${seg("customer")}${seg("marketing")}${seg("noncustomer")}</div>
-      <span>${MONTHS[+mo-1]} ${y.slice(-2)}</span></div>`;
+    return `<div class="m" title="${m.count} events · ${hrs(m.minutes)}h — Facing ${hrs(m.facing)}h / Related (non-facing) ${hrs(m.related)}h / Non ${hrs(m.noncustomer)}h">
+      <div class="stack" style="height:${Math.round(m.minutes/maxM*120)}px">${seg("facing")}${seg("related")}${seg("noncustomer")}</div>
+      <span>Q${m.quarter} <span class="muted">${QLABELS[m.quarter]||''}</span></span></div>`;
   }).join("");
   const legend=Object.keys(CATS).map(k=>`<span><b style="background:${CATS[k].col}"></b>${CATS[k].lab}</span>`).join("");
+  // quarterly targets vs actual, with a pro-rata (days-elapsed-in-quarter) marker
+  const cq=(a.byQuarter||[]).find(q=>q.quarter===a.currentQuarter)||{};
+  const pq=(a.byQuarter||[]).find(q=>q.quarter===a.currentQuarter-1);
+  const proRataPct=Math.min(100,(a.currentQuarterProgress||{}).pct||0);
+  const tgRow=(label,color,curMin,targetHrs,prevMin)=>{
+    const cur=(curMin||0)/60, tgt=targetHrs||0;
+    const pct=tgt?Math.round(cur/tgt*100):0;
+    const fillPct=Math.min(100,pct);
+    const prevStr=pq===undefined?"—":`${((prevMin||0)/60).toFixed(1)}/${tgt} Hrs (${tgt?Math.round((prevMin||0)/60/tgt*100):0}%)`;
+    return `<div class="tgrow">
+      <div class="tgtop"><span>${label}</span><b>${cur.toFixed(1)} / ${tgt} Hrs (${pct}%)</b></div>
+      <div class="tgwrap"><div class="tgbar"><div class="tgfill" style="width:${fillPct}%;background:${color}"></div></div>
+        <div class="tgmark" style="left:${proRataPct}%" title="Pro-rata: ${proRataPct}% of quarter elapsed"></div></div>
+      <div class="tgmeta muted">Pro-rata today: ${(tgt*proRataPct/100).toFixed(1)} Hrs · Prev Qtr ${prevStr}</div></div>`;
+  };
+  // Customer Related target = ALL related time, facing included (facing is a
+  // subset of related per the official Activity Type definitions).
+  const relSuper = q => q ? (q.facing||0)+(q.related||0) : undefined;
+  const targetsCard=`<div class="card"><h3>Quarterly targets — ${QLABELS[a.currentQuarter]||''}</h3>
+    ${tgRow("Customer Related", CATS.related.col, relSuper(cq), state.targets.relatedHrs, relSuper(pq))}
+    ${tgRow("Customer Facing", CATS.facing.col, cq.facing, state.targets.facingHrs, pq?.facing)}
+    </div>`;
   // Alerts — activity on DEAD opportunities in the last 7 days
   const alerts=a.alerts||[];
   const alertRows=alerts.length?alerts.map(x=>`<div class="alertitem">
@@ -555,7 +640,8 @@ function viewActivity(){
   const l14Card=`<div class="card"><h3>Time spent by account · last 14 days</h3>
     <table class="ptable"><tr><th>Account</th><th class="num">Time</th><th class="num">Activities</th><th>Top opportunity</th><th class="num">Amount</th><th class="close">Close</th></tr>${l14Rows}</table></div>`;
   return `<div class="ttrack">${summary}${catCards}</div>
-    <div class="card"><h3>Time spent by month — by category</h3><div class="months">${bars}</div>
+    ${targetsCard}
+    <div class="card"><h3>Time spent by quarter — by category</h3><div class="months">${bars}</div>
       <div class="legend">${legend}</div></div>
     ${alertCard}
     ${gapCard}
@@ -654,7 +740,8 @@ function openDetail(id){
     <div class="body">
       <div class="kv"><span class="k">Account</span><span>${esc(r.account)||"—"}</span></div>
       <div class="kv"><span class="k">Core AE</span><span>${esc(r.owner)||"—"}</span></div>
-      ${r.se?`<div class="kv"><span class="k">SE team</span><span>${esc(r.se)}</span></div>`:""}
+      <div class="kv"><span class="k">Core SE</span><span>${esc(r.coreSE)||"—"}</span></div>
+      <div class="kv"><span class="k">Service AE</span><span>${esc(r.serviceAE)||"—"}</span></div>
       <div class="kv"><span class="k">Stage</span><span>${esc(r.stage)||"—"}</span></div>
       <div class="kv"><span class="k">Close</span><span>${fmtDate(r.close)}</span></div>
       <div class="kv"><span class="k">Amount</span><span class="amt">${fmt(r.amount)}</span></div>
@@ -707,6 +794,8 @@ function render(){
   });
   const dt=document.getElementById("deadtog");
   if(dt) dt.onchange=e=>{ state.showDead=e.target.checked; render(); };
+  const at=document.getElementById("aligntog");
+  if(at) at.onchange=e=>{ state.showAlignedOnly=e.target.checked; render(); };
   const cp=document.getElementById("cal-prev"), cn=document.getElementById("cal-next");
   if(cp) cp.onclick=()=>{ shiftMonth(-1); render(); };
   if(cn) cn.onclick=()=>{ shiftMonth(1); render(); };
@@ -729,6 +818,9 @@ document.addEventListener("click",()=>settingsPop.classList.remove("open"));
 function syncSettingsUI(){
   document.querySelectorAll("#role-seg button").forEach(b=>b.classList.toggle("active", b.dataset.mode===state.roleMode));
   document.getElementById("movetog").checked=state.showMovements;
+  document.getElementById("tg-related").value=state.targets.relatedHrs;
+  document.getElementById("tg-facing").value=state.targets.facingHrs;
+  document.getElementById("aligned-ses").value=state.alignedSEs;
 }
 document.querySelectorAll("#role-seg button").forEach(b=>b.onclick=()=>{
   if(state.roleMode===b.dataset.mode) return;
@@ -737,9 +829,27 @@ document.querySelectorAll("#role-seg button").forEach(b=>b.onclick=()=>{
 document.getElementById("movetog").onchange=e=>{
   state.showMovements=e.target.checked; saveSettings(); renderMovebar();
 };
-syncSettingsUI();
+function tgInput(id,key){
+  document.getElementById(id).onchange=e=>{
+    const v=parseFloat(e.target.value);
+    if(!isNaN(v) && v>=0){ state.targets[key]=v; saveSettings(); if(state.tab==="activity") render(); }
+  };
+}
+tgInput("tg-related","relatedHrs");
+tgInput("tg-facing","facingHrs");
+document.getElementById("aligned-ses").onchange=e=>{
+  state.alignedSEs=e.target.value; saveSettings(); renderKPIs(); if(state.tab==="whitespace") render();
+};
 
-fetchAll();
+(async function boot(){
+  const s = await loadSettings();
+  state.roleMode = s.roleMode || "fsl";
+  state.showMovements = s.showMovements !== undefined ? s.showMovements : true;
+  state.targets = s.targets || {relatedHrs:250, facingHrs:125};
+  state.alignedSEs = s.alignedSEs || "";
+  syncSettingsUI();
+  fetchAll();
+})();
 </script>
 </body>
 </html>

@@ -152,11 +152,14 @@ class Org62:
 
         Event.OwnerId = me, ActivityDate in this FY. RecordType.Name drives the
         distribution (verified: 'Solutions Event', 'Sales Events').
-        DurationInMinutes is the time-spent measure.
+        DurationInMinutes is the time-spent measure. SE_Task_Type__c (verified
+        picklist, all 34 org values) drives the Customer Related / Customer
+        Facing split in server.py's ACTIVITY_TYPE_MAP, per Ron's official
+        Activity Type definitions doc.
         """
         uid = self.my_user_id()
         soql = (
-            "SELECT Id, Subject, Type, RecordType.Name, DurationInMinutes, "
+            "SELECT Id, Subject, Type, SE_Task_Type__c, RecordType.Name, DurationInMinutes, "
             "ActivityDateTime, WhatId, "
             "TYPEOF What "
             "WHEN Opportunity THEN Name, Amount, CloseDate, StageName, Account.Name "
@@ -270,6 +273,49 @@ class Org62:
             "ORDER BY SE_Comment_Update_Date__c DESC"
         )
         return {"history": history, "comments": comments}
+
+    def my_service_aes(self, opp_ids):
+        """Service Cloud AE per opportunity, for a given set of opp ids.
+
+        NOT OpportunityTeamMember — "Selling Role" lives on the managed-package
+        object sfbase__OpportunityTeam__c ("Opportunity Team"), field
+        TeamRoleLookup__c (label "Selling Role"), a lookup to Team_Role__c, not
+        a picklist. Verified against Org62 record aAUed00000jdvd2: Opportunity
+        006ed00000kBbt0AAC, sfbase__User__r.Name = 'Clinton Alver',
+        TeamRoleLookup__r.Name = 'Service Cloud AE' — exact match.
+        Takes explicit opp_ids (from my_deals_fy()) to build a literal
+        IN (...) clause rather than a semi-join.
+        """
+        if not opp_ids:
+            return []
+        ids = ",".join(f"'{i}'" for i in opp_ids)
+        soql = (
+            "SELECT sfbase__Opportunity__c, sfbase__User__r.Name "
+            "FROM sfbase__OpportunityTeam__c "
+            f"WHERE TeamRoleLookup__r.Name = 'Service Cloud AE' AND sfbase__Opportunity__c IN ({ids})"
+        )
+        return self.query(soql)
+
+    def core_ses_for_opps(self, opp_ids):
+        """Core SE per opportunity, for a given set of opp ids (any opps, not just mine).
+
+        Deal_Contribution__c, Opportunity_Role__c = 'Core SE' (verified exact
+        literal against Org62 — distinct from e.g. 'RCG Kahuna Core SE'; 2.13M
+        rows org-wide, a common/real role, not a typo-adjacent decoy).
+        SE_Name__c is the contributor lookup (same field used by
+        coverage_gaps()). Literal IN (...) — same reasoning as my_service_aes.
+        Used both for my_deals_fy() rows (Open Pipe "Core SE" column) and for
+        anz_fsl_whitespace() rows (whitespace "aligned SE" matching), since the
+        role isn't scoped to any one user.
+        """
+        if not opp_ids:
+            return []
+        ids = ",".join(f"'{i}'" for i in opp_ids)
+        soql = (
+            "SELECT Opportunity__c, SE_Name__r.Name FROM Deal_Contribution__c "
+            f"WHERE Opportunity_Role__c = 'Core SE' AND Opportunity__c IN ({ids})"
+        )
+        return self.query(soql)
 
     def opportunity_products(self, opp_id):
         """Line items for one opportunity — fetched lazily by the detail drawer."""

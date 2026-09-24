@@ -6,3 +6,6 @@ venv/
 
 # Confidential Org62 pipeline data — never push
 web/snapshot_*.json
+
+# Local user prefs (targets, toggles) — machine-specific, not shared
+web/settings_local.json
