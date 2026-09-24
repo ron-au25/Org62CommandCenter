@@ -12,6 +12,7 @@ import json
 import os
 import re
 import sys
+from concurrent.futures import ThreadPoolExecutor
 
 from flask import Flask, jsonify, request, send_from_directory
 
@@ -322,6 +323,35 @@ def _role_mode():
     return m if m in ("fsl", "service_cloud") else "fsl"
 
 
+def _se_ae_by_opp(opp_ids):
+    """Service AE + Core SE names keyed by opportunity id, for the given opps.
+
+    Runs the two independent lookups concurrently (each is a blocking `sf` CLI
+    subprocess, so threads help despite the GIL) to avoid stacking their
+    latency on top of the base tab query. These are enrichments, not core deal
+    data, so a failure is logged and degrades to empty maps rather than failing
+    the whole tab — but it IS logged, since blank columns are also the
+    signature of a wrong object/field or API-version drift and must not pass
+    silently. First contributor per opp wins if a deal has more than one.
+    """
+    ae_by_opp, se_by_opp = {}, {}
+    if not opp_ids:
+        return ae_by_opp, se_by_opp
+    try:
+        with ThreadPoolExecutor(max_workers=2) as ex:
+            fut_ae = ex.submit(org.my_service_aes, opp_ids)
+            fut_se = ex.submit(org.core_ses_for_opps, opp_ids)
+            for r in fut_ae.result():
+                ae_by_opp.setdefault(r.get("sfbase__Opportunity__c"),
+                                     (r.get("sfbase__User__r") or {}).get("Name"))
+            for r in fut_se.result():
+                se_by_opp.setdefault(r.get("Opportunity__c"),
+                                     (r.get("SE_Name__r") or {}).get("Name"))
+    except Exception:
+        app.logger.warning("Service AE / Core SE enrichment failed", exc_info=True)
+    return ae_by_opp, se_by_opp
+
+
 # User prefs (role mode, ticker toggle, quarterly targets) — file-backed so
 # they survive a restart/different browser, not just one browser's localStorage.
 SETTINGS_FILE = os.path.join(HERE, "settings_local.json")
@@ -396,19 +426,11 @@ def api_forecast():
     """My deals (open + closed) closing this FY — powers KPIs, Forecast, Coach."""
     try:
         rows = flatten_fy(org.my_deals_fy())
-        try:
-            ae_by_opp = {}
-            opp_ids = [row["id"] for row in rows if row.get("id")]
-            for r in org.my_service_aes(opp_ids):
-                ae_by_opp.setdefault(r.get("sfbase__Opportunity__c"), (r.get("sfbase__User__r") or {}).get("Name"))
-            se_by_opp = {}
-            for r in org.core_ses_for_opps(opp_ids):
-                se_by_opp.setdefault(r.get("Opportunity__c"), (r.get("SE_Name__r") or {}).get("Name"))
-            for row in rows:
-                row["serviceAE"] = ae_by_opp.get(row.get("id"))
-                row["coreSE"] = se_by_opp.get(row.get("id"))
-        except Exception:
-            pass  # Service AE / Core SE are enrichments, not core deal data — don't fail the whole tab for it.
+        opp_ids = [row["id"] for row in rows if row.get("id")]
+        ae_by_opp, se_by_opp = _se_ae_by_opp(opp_ids)
+        for row in rows:
+            row["serviceAE"] = ae_by_opp.get(row.get("id"))
+            row["coreSE"] = se_by_opp.get(row.get("id"))
         return jsonify(_payload(rows, "live"))
     except Exception as e:
         snap = _snapshot("snapshot_forecast.json")
@@ -421,19 +443,11 @@ def api_whitespace():
     mode = _role_mode()
     try:
         rows = flatten_whitespace(org.anz_fsl_whitespace(mode=mode))
-        try:
-            opp_ids = [row["id"] for row in rows if row.get("id")]
-            se_by_opp = {}
-            for r in org.core_ses_for_opps(opp_ids):
-                se_by_opp.setdefault(r.get("Opportunity__c"), (r.get("SE_Name__r") or {}).get("Name"))
-            ae_by_opp = {}
-            for r in org.my_service_aes(opp_ids):
-                ae_by_opp.setdefault(r.get("sfbase__Opportunity__c"), (r.get("sfbase__User__r") or {}).get("Name"))
-            for row in rows:
-                row["coreSE"] = se_by_opp.get(row.get("id"))
-                row["serviceAE"] = ae_by_opp.get(row.get("id"))
-        except Exception:
-            pass  # Core SE / Service AE are enrichments for alignment filtering — don't fail the tab for it.
+        opp_ids = [row["id"] for row in rows if row.get("id")]
+        ae_by_opp, se_by_opp = _se_ae_by_opp(opp_ids)
+        for row in rows:
+            row["coreSE"] = se_by_opp.get(row.get("id"))
+            row["serviceAE"] = ae_by_opp.get(row.get("id"))
         payload = _payload(rows, "live")
         payload["roleMode"] = mode
         return jsonify(payload)

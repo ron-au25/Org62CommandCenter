@@ -12,6 +12,15 @@ import urllib.parse
 
 API_VERSION = "v64.0"
 
+# Max opp ids per IN (...) clause. Keeps the query-string GET URL well under
+# platform limits even for a heavy user; results are merged across batches.
+_ID_BATCH = 200
+
+
+def _chunks(seq, size):
+    for i in range(0, len(seq), size):
+        yield seq[i:i + size]
+
 # Verified against Org62 (00D000000000062EAA):
 # - Deal_Contribution__c.Opportunity_Role__c has exact literal values
 #   'Service Cloud FSL Specialist' and 'Service Cloud SE' (distinct values).
@@ -286,15 +295,16 @@ class Org62:
         Takes explicit opp_ids (from my_deals_fy()) to build a literal
         IN (...) clause rather than a semi-join.
         """
-        if not opp_ids:
-            return []
-        ids = ",".join(f"'{i}'" for i in opp_ids)
-        soql = (
-            "SELECT sfbase__Opportunity__c, sfbase__User__r.Name "
-            "FROM sfbase__OpportunityTeam__c "
-            f"WHERE TeamRoleLookup__r.Name = 'Service Cloud AE' AND sfbase__Opportunity__c IN ({ids})"
-        )
-        return self.query(soql)
+        out = []
+        for batch in _chunks(opp_ids, _ID_BATCH):
+            ids = ",".join(f"'{i}'" for i in batch)
+            soql = (
+                "SELECT sfbase__Opportunity__c, sfbase__User__r.Name "
+                "FROM sfbase__OpportunityTeam__c "
+                f"WHERE TeamRoleLookup__r.Name = 'Service Cloud AE' AND sfbase__Opportunity__c IN ({ids})"
+            )
+            out.extend(self.query(soql))
+        return out
 
     def core_ses_for_opps(self, opp_ids):
         """Core SE per opportunity, for a given set of opp ids (any opps, not just mine).
@@ -308,14 +318,15 @@ class Org62:
         anz_fsl_whitespace() rows (whitespace "aligned SE" matching), since the
         role isn't scoped to any one user.
         """
-        if not opp_ids:
-            return []
-        ids = ",".join(f"'{i}'" for i in opp_ids)
-        soql = (
-            "SELECT Opportunity__c, SE_Name__r.Name FROM Deal_Contribution__c "
-            f"WHERE Opportunity_Role__c = 'Core SE' AND Opportunity__c IN ({ids})"
-        )
-        return self.query(soql)
+        out = []
+        for batch in _chunks(opp_ids, _ID_BATCH):
+            ids = ",".join(f"'{i}'" for i in batch)
+            soql = (
+                "SELECT Opportunity__c, SE_Name__r.Name FROM Deal_Contribution__c "
+                f"WHERE Opportunity_Role__c = 'Core SE' AND Opportunity__c IN ({ids})"
+            )
+            out.extend(self.query(soql))
+        return out
 
     def opportunity_products(self, opp_id):
         """Line items for one opportunity — fetched lazily by the detail drawer."""
