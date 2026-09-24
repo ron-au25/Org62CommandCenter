@@ -10,9 +10,10 @@ Read-only by design: SELECT SOQL only, no write-back. Binds 127.0.0.1.
 """
 import json
 import os
+import re
 import sys
 
-from flask import Flask, jsonify, send_from_directory
+from flask import Flask, jsonify, request, send_from_directory
 
 # salesforce.py lives one level up, in FieldServiceCommandCenter/
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -243,6 +244,11 @@ def _payload(rows, source):
     }
 
 
+def _role_mode():
+    m = request.args.get("role_mode", "fsl")
+    return m if m in ("fsl", "service_cloud") else "fsl"
+
+
 @app.route("/")
 def index():
     return send_from_directory(HERE, "command.html")
@@ -271,11 +277,15 @@ def api_forecast():
 
 @app.route("/api/whitespace")
 def api_whitespace():
+    mode = _role_mode()
     try:
-        return jsonify(_payload(flatten_whitespace(org.anz_fsl_whitespace()), "live"))
+        payload = _payload(flatten_whitespace(org.anz_fsl_whitespace(mode=mode)), "live")
+        payload["roleMode"] = mode
+        return jsonify(payload)
     except Exception as e:
         snap = _snapshot("snapshot_whitespace.json")
         snap["error"] = str(e)
+        snap.setdefault("roleMode", "fsl")
         return jsonify(snap)
 
 
@@ -295,17 +305,126 @@ def flatten_gaps(records):
 @app.route("/api/activity")
 def api_activity():
     """My Events this FY — Activity Log tab (time, alerts, coverage gaps)."""
+    mode = _role_mode()
     try:
         payload = flatten_activity(org.my_events_fy())
-        gaps = flatten_gaps(org.coverage_gaps())
+        gaps = flatten_gaps(org.coverage_gaps(mode=mode))
         payload["coverageGaps"] = gaps
         payload["coverageGapTotal"] = sum(r.get("amount") or 0 for r in gaps)
         payload["source"] = "live"
+        payload["roleMode"] = mode
         return jsonify(payload)
     except Exception as e:
         snap = _snapshot("snapshot_activity.json")
         snap["error"] = str(e)
+        snap.setdefault("roleMode", "fsl")
         return jsonify(snap)
+
+
+def flatten_movements(data, days=30):
+    """OpportunityHistory + comment-date rows -> one card per opportunity.
+
+    No PrevStageName on OpportunityHistory, so stage-change direction is
+    derived by diffing each opp's rows in CreatedDate order (data["history"]
+    is pre-sorted OpportunityId ASC, CreatedDate ASC). Multiple changes of the
+    same type on the same opp within the window collapse into a single net
+    amount move / latest stage move, rather than one card per row.
+    """
+    from datetime import datetime, timedelta, timezone
+
+    now = datetime.now(timezone.utc)
+    end = now.strftime("%Y-%m-%dT%H:%M:%S")
+    cutoff = (now - timedelta(days=days)).strftime("%Y-%m-%dT00:00:00")
+
+    opps = {}
+    last_stage = {}
+    for h in data.get("history", []):
+        opp = h.get("Opportunity") or {}
+        acct = opp.get("Account") or {}
+        oid = h.get("OpportunityId")
+        date = h.get("CreatedDate") or ""
+        amount, prev_amount = h.get("Amount"), h.get("PrevAmount")
+        stage = h.get("StageName")
+        rec = opps.setdefault(oid, {"opp": opp.get("Name"), "account": acct.get("Name"),
+                                     "amount_events": [], "stage_events": [], "comment_date": None})
+
+        if prev_amount is not None and amount is not None and amount != prev_amount and cutoff <= date <= end:
+            rec["amount_events"].append({"old": prev_amount, "new": amount, "date": date})
+
+        prev_stage = last_stage.get(oid)
+        if prev_stage is not None and stage and stage != prev_stage and cutoff <= date <= end:
+            new_dead = stage.startswith("Dead") or "Lost" in stage
+            old_pre, new_pre = prev_stage[:2], stage[:2]
+            if new_dead:
+                direction = "down"
+            elif "Won" in stage:
+                direction = "up"
+            elif new_pre.isdigit() and old_pre.isdigit():
+                direction = "up" if new_pre > old_pre else "down" if new_pre < old_pre else "flat"
+            else:
+                direction = "flat"
+            rec["stage_events"].append({"old": prev_stage, "new": stage, "direction": direction, "date": date})
+        if stage:
+            last_stage[oid] = stage
+
+    for c in data.get("comments", []):
+        date = c.get("SE_Comment_Update_Date__c") or ""
+        if not (cutoff <= date <= end):
+            continue
+        acct = c.get("Account") or {}
+        rec = opps.setdefault(c.get("Id"), {"opp": c.get("Name"), "account": acct.get("Name"),
+                                             "amount_events": [], "stage_events": [], "comment_date": None})
+        rec["comment_date"] = date
+
+    items = []
+    for rec in opps.values():
+        amount_events, stage_events = rec["amount_events"], rec["stage_events"]
+        if not amount_events and not stage_events and not rec["comment_date"]:
+            continue
+        amount_block = None
+        if amount_events:
+            old, new = amount_events[0]["old"], amount_events[-1]["new"]
+            delta = new - old
+            amount_block = {"old": old, "new": new, "delta": delta,
+                             "direction": "up" if delta > 0 else "down" if delta < 0 else "flat"}
+        stage_block = None
+        if stage_events:
+            last = stage_events[-1]
+            stage_block = {"old": last["old"], "new": last["new"], "direction": last["direction"]}
+        dates = [e["date"] for e in amount_events] + [e["date"] for e in stage_events]
+        if rec["comment_date"]:
+            dates.append(rec["comment_date"])
+        items.append({
+            "opp": rec["opp"], "account": rec["account"], "date": max(dates) if dates else "",
+            "amount": amount_block, "stage": stage_block, "comment": bool(rec["comment_date"]),
+        })
+
+    items.sort(key=lambda x: x["date"], reverse=True)
+    return {"source": "live", "items": items[:40]}
+
+
+@app.route("/api/movements")
+def api_movements():
+    try:
+        return jsonify(flatten_movements(org.my_pipeline_movements()))
+    except Exception as e:
+        return jsonify({"source": "snapshot", "items": [], "error": str(e)})
+
+
+_SF_ID_RE = re.compile(r"^[a-zA-Z0-9]{15,18}$")
+
+
+@app.route("/api/opportunity/<opp_id>/products")
+def api_opportunity_products(opp_id):
+    """Lazy per-opp line items — fetched when the detail drawer opens."""
+    if not _SF_ID_RE.match(opp_id):
+        return jsonify({"error": "invalid id", "rows": []}), 400
+    try:
+        rows = [{"name": (r.get("Product2") or {}).get("Name"), "qty": r.get("Quantity"),
+                 "total": r.get("TotalPrice")} for r in org.opportunity_products(opp_id)]
+        return jsonify({"source": "live", "rows": rows})
+    except Exception as e:
+        return jsonify({"source": "error", "rows": [], "error": str(e)})
 
 
 if __name__ == "__main__":

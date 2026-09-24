@@ -12,6 +12,26 @@ import urllib.parse
 
 API_VERSION = "v64.0"
 
+# Verified against Org62 (00D000000000062EAA):
+# - Deal_Contribution__c.Opportunity_Role__c has exact literal values
+#   'Service Cloud FSL Specialist' and 'Service Cloud SE' (distinct values).
+# - Product2.Name LIKE '%Service Cloud%' -> 567 catalog rows / 3.24M
+#   OpportunityLineItem rows; LIKE '%Agentforce for Service%' -> 18 catalog
+#   rows (all "...Add-on - <Edition>" variants) / 32,995 line items. Both
+#   real/active, not catalog-only.
+ROLE_MODES = {
+    "fsl": {
+        "label": "FSL",
+        "sku_clause": "Product2.Name LIKE '%Field Service%'",
+        "role": "Service Cloud FSL Specialist",
+    },
+    "service_cloud": {
+        "label": "Service Cloud",
+        "sku_clause": "(Product2.Name LIKE '%Service Cloud%' OR Product2.Name LIKE '%Agentforce for Service%')",
+        "role": "Service Cloud SE",
+    },
+}
+
 
 class Org62:
     def __init__(self, alias="org62"):
@@ -148,17 +168,22 @@ class Org62:
         )
         return self.query(soql)
 
-    def coverage_gaps(self):
+    def coverage_gaps(self, mode="fsl"):
         """Business opps in accounts I'm actively working this FY that I'm NOT
         engaged on (not the Deal_Contribution contributor).
 
-        Contributor = Deal_Contribution__c.SE_Name__c (label 'Contributor').
+        Contributor = Deal_Contribution__c.SE_Name__c (label 'Contributor') —
+        this is ME, regardless of role, so `mode` only swaps which product
+        line counts as "in scope" (the FS/Service-Cloud SKU clause), not the
+        contributor check itself.
         Active account = an account with an opp closing this FY where I'm the
         contributor. Only New Business / Add-On Business (skip Renewal / SOW /
-        Success Plan / Transfer / Upgrade), and only Field-Service opps (an
-        OpportunityLineItem whose Product2.Name contains 'Field Service').
+        Success Plan / Transfer / Upgrade), and only in-scope-product opps.
         Open, closing this FY.
         """
+        if mode not in ROLE_MODES:
+            raise ValueError(f"Unknown role mode: {mode!r}")
+        sku_clause = ROLE_MODES[mode]["sku_clause"]
         uid = self.my_user_id()
         acct_recs = self.query(
             "SELECT Opportunity__r.AccountId FROM Deal_Contribution__c "
@@ -175,28 +200,31 @@ class Org62:
             f"WHERE AccountId IN ({ids}) AND IsClosed = false "
             "AND Type IN ('New Business','Add-On Business') "
             "AND CloseDate = THIS_FISCAL_YEAR "
-            "AND Id IN (SELECT OpportunityId FROM OpportunityLineItem "
-            "WHERE Product2.Name LIKE '%Field Service%') "
+            f"AND Id IN (SELECT OpportunityId FROM OpportunityLineItem WHERE {sku_clause}) "
             f"AND Id NOT IN (SELECT Opportunity__c FROM Deal_Contribution__c WHERE SE_Name__c = '{uid}') "
             "ORDER BY Amount DESC NULLS LAST"
         )
         return self.query(soql)
 
-    def anz_fsl_whitespace(self):
-        """ANZ Field-Service opportunities with no FSL Specialist engaged.
+    def anz_fsl_whitespace(self, mode="fsl"):
+        """ANZ opportunities with no specialist of the given `mode` engaged.
 
         Verified against Org62:
         - ANZ = Account.BillingCountry in AU/NZ (Opp region fields unreliable).
-        - "Field Service product" = an OpportunityLineItem whose Product2.Name
-          contains "Field Service".
         - open + stages 02/03/04, closing between today and end of this FY.
         - business only: Type in New Business / Add-On Business (skip
           Renewal / SOW / Success Plan / Transfer / Upgrade).
-        - whitespace = no Deal_Contribution__c with
-          Opportunity_Role__c = 'Service Cloud FSL Specialist' (this is the
-          real "deal contribution" object; OpportunityTeamMember has no such
-          role in its picklist).
+        - whitespace = no Deal_Contribution__c with Opportunity_Role__c
+          matching the mode's role (this is the real "deal contribution"
+          object; OpportunityTeamMember has no such role in its picklist).
+        - `mode="fsl"` (default): Field Service product, role
+          'Service Cloud FSL Specialist'. `mode="service_cloud"`: Service
+          Cloud / Agentforce for Service product, role 'Service Cloud SE'.
         """
+        if mode not in ROLE_MODES:
+            raise ValueError(f"Unknown role mode: {mode!r}")
+        sku_clause = ROLE_MODES[mode]["sku_clause"]
+        role = ROLE_MODES[mode]["role"]
         soql = (
             "SELECT Id, Name, StageName, CloseDate, Amount, "
             "Account.Name, Account.BillingCountry, Owner.Name, NextStep, "
@@ -208,10 +236,45 @@ class Org62:
             "AND CloseDate >= TODAY AND CloseDate = THIS_FISCAL_YEAR "
             "AND Type IN ('New Business','Add-On Business') "
             "AND Account.BillingCountry IN ('AU','NZ','Australia','New Zealand') "
-            "AND Id IN (SELECT OpportunityId FROM OpportunityLineItem "
-            "WHERE Product2.Name LIKE '%Field Service%') "
+            f"AND Id IN (SELECT OpportunityId FROM OpportunityLineItem WHERE {sku_clause}) "
             "AND Id NOT IN (SELECT Opportunity__c FROM Deal_Contribution__c "
-            "WHERE Opportunity_Role__c = 'Service Cloud FSL Specialist') "
+            f"WHERE Opportunity_Role__c = '{role}') "
             "ORDER BY Amount DESC NULLS LAST"
+        )
+        return self.query(soql)
+
+    def my_pipeline_movements(self):
+        """Raw ingredients for the rolling pipeline-movements bar.
+
+        Two raw queries; server.py does the diffing/shaping (matching the
+        existing convention where flatten_activity() derives everything from
+        raw my_events_fy() rows). history = OpportunityHistory rows for my
+        open opps (verified queryable, standard fields incl. PrevAmount — no
+        PrevStageName, so stage-change detection needs a sequential diff
+        against the previous row per opp, done in server.py).
+        comments = open opps with a recent SE_Comment_Update_Date__c.
+        """
+        uid = self.my_user_id()
+        history = self.query(
+            "SELECT OpportunityId, Amount, PrevAmount, StageName, CreatedDate, "
+            "Opportunity.Name, Opportunity.Account.Name FROM OpportunityHistory "
+            "WHERE OpportunityId IN (SELECT OpportunityId FROM OpportunityTeamMember "
+            f"WHERE UserId = '{uid}' AND Opportunity.IsClosed = false) "
+            "ORDER BY OpportunityId ASC, CreatedDate ASC"
+        )
+        comments = self.query(
+            "SELECT Id, Name, Account.Name, SE_Comment_Update_Date__c FROM Opportunity "
+            "WHERE IsClosed = false AND SE_Comment_Update_Date__c != null "
+            "AND Id IN (SELECT OpportunityId FROM OpportunityTeamMember "
+            f"WHERE UserId = '{uid}') "
+            "ORDER BY SE_Comment_Update_Date__c DESC"
+        )
+        return {"history": history, "comments": comments}
+
+    def opportunity_products(self, opp_id):
+        """Line items for one opportunity — fetched lazily by the detail drawer."""
+        soql = (
+            "SELECT Product2.Name, Quantity, TotalPrice FROM OpportunityLineItem "
+            f"WHERE OpportunityId = '{opp_id}'"
         )
         return self.query(soql)

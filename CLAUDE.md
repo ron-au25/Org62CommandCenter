@@ -17,20 +17,50 @@ Data owner: Ron Shpilman — SE, Field Service, ANZ region.
 
 ## Data model facts (verified against Org62 — do NOT re-derive or assume)
 - My-deal tagging: **OpportunityTeamMember**, `TeamMemberRole = 'Solutions Engineer'`. NOT Deal_Contribution.
-- SE specialist crediting: **Deal_Contribution__c**, picklist `Opportunity_Role__c`
-  (value `'Service Cloud FSL Specialist'`). OpportunityTeamMember has no such role.
+- SE specialist crediting: **Deal_Contribution__c**, picklist `Opportunity_Role__c` — two exact literal
+  values: `'Service Cloud FSL Specialist'` and `'Service Cloud SE'`. OpportunityTeamMember has no such role.
 - ANZ = `Account.BillingCountry IN ('AU','NZ','Australia','New Zealand')`. Opp region fields unreliable.
 - "Field Service product" = OpportunityLineItem with `Product2.Name LIKE '%Field Service%'`.
+- "Service Cloud product" = OpportunityLineItem with `Product2.Name LIKE '%Service Cloud%'` OR
+  `LIKE '%Agentforce for Service%'` (18 catalog SKUs, all `...Add-on - <Edition>` variants — no bare SKU).
 - Open pipeline stages of interest: `02%`, `03%`, `04%` (`StageName LIKE`). Exclude closed/dead.
 - Fiscal year: Feb 1 – Jan 31. Current = FY27 (ends 2027-01-31). Use `CloseDate = THIS_FISCAL_YEAR`.
 - SOQL: no field aliasing (only aggregates allow it). OpportunityTeamMember is huge/unindexed — never LIKE-scan it.
+- Semi-join subqueries on OpportunityTeamMember must `SELECT OpportunityId` (the direct FK), not
+  `Opportunity.Id` — a relationship-traversal SELECT in that position throws `MALFORMED_QUERY`
+  ("cannot have more than one level of relationships").
+- `OpportunityHistory` is fully queryable, no restrictions. Has `Amount`/`PrevAmount` but **no
+  `PrevStageName`** — stage-change direction must be derived by diffing sequential rows per opp in code.
+- `OpportunityLineItem.Quantity` / `TotalPrice` / `Product2Id` confirmed present (see `opportunity_products()`).
+
+## Role-mode toggle (Settings gear, top right)
+`ROLE_MODES` in `salesforce.py` — `"fsl"` (default) vs `"service_cloud"`, each mapping to a
+SKU LIKE-clause + a `Deal_Contribution__c.Opportunity_Role__c` literal. Threaded via `mode=` into
+`anz_fsl_whitespace()` and `coverage_gaps()` (the latter only uses the SKU clause — its contributor
+check is an identity match on `SE_Name__c`, not a role check). Server reads `?role_mode=` on
+`/api/whitespace` and `/api/activity`, clamped to the two valid values. Persisted client-side in
+`localStorage` (`cc_settings`), not on the server.
 
 ## Whitespace definition
-ANZ opps, open, stage 02/03/04, has FS product, `CloseDate >= TODAY AND = THIS_FISCAL_YEAR`,
-and NOT IN Deal_Contribution__c where role = 'Service Cloud FSL Specialist'. Dead opps excluded.
+ANZ opps, open, stage 02/03/04, has in-scope product (FS or Service Cloud, per role mode),
+`CloseDate >= TODAY AND = THIS_FISCAL_YEAR`, and NOT IN Deal_Contribution__c where role matches
+the mode. Dead opps excluded.
+
+## Pipeline movements bar (Settings gear → show/hide)
+`/api/movements` → `salesforce.my_pipeline_movements()` (raw OpportunityHistory + recent
+SE_Comment_Update_Date__c rows for my open opps) → `server.flatten_movements()` groups everything
+by opportunity (one card per opp, not per history row) into a net amount move + latest stage move +
+comment flag, last 30 days, capped at 40. No snapshot fallback exists yet — a live-query failure
+just returns an empty ticker, not a crash.
+
+## Per-opp product line items (detail drawer)
+Live rows never bulk-carry `products[]` (would mean an OpportunityLineItem query per row on every
+tab load — too expensive). Fetched lazily instead: `/api/opportunity/<id>/products` →
+`org.opportunity_products()`, called only when the drawer opens for that opp.
 
 ## Run
-- Web: `PORT=5057 ./.venv/bin/python web/server.py` (port 5000 = macOS AirPlay, returns 403 — avoid).
+- One-shot: `./run.sh` (creates venv, triggers CLI login if needed, starts server). See `INSTALL.md`.
+- Manual: `PORT=5057 ./.venv/bin/python web/server.py` (port 5000 = macOS AirPlay, returns 403 — avoid).
 - Live query fails gracefully to bundled snapshot JSON; badge shows `snapshot` vs `live`.
 
 ## House rules

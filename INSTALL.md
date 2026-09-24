@@ -144,10 +144,16 @@ then reload the page.
 The queries assume these Org62 facts (see `CLAUDE.md` for the full list):
 
 - My-deal tagging: `OpportunityTeamMember`, `TeamMemberRole = 'Solutions Engineer'`.
-- SE specialist crediting: `Deal_Contribution__c.Opportunity_Role__c = 'Service Cloud FSL Specialist'`.
+- SE specialist crediting: `Deal_Contribution__c.Opportunity_Role__c` — `'Service Cloud FSL Specialist'`
+  or `'Service Cloud SE'`, selected via the Settings (⚙) role-mode toggle in the header.
 - ANZ = `Account.BillingCountry IN ('AU','NZ','Australia','New Zealand')`.
-- "Field Service product" = `OpportunityLineItem` with `Product2.Name LIKE '%Field Service%'`.
+- "Field Service product" = `OpportunityLineItem` with `Product2.Name LIKE '%Field Service%'`;
+  "Service Cloud product" = `LIKE '%Service Cloud%'` or `LIKE '%Agentforce for Service%'`.
 - Fiscal year = Feb 1 – Jan 31 (`CloseDate = THIS_FISCAL_YEAR`).
+
+The dashboard also has a rolling pipeline-movements ticker (recent amount/stage/comment changes on
+your open pipe) and lazy per-opportunity product line items in the detail drawer — both toggled or
+loaded live, no snapshot dependency for either. See `CLAUDE.md` for the query details.
 
 These are Org62-specific. If another org uses different objects/roles, adjust
 the SOQL in `salesforce.py`.

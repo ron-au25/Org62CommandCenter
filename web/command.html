@@ -33,6 +33,31 @@
   #refresh .spin { display:inline-block; width:12px; height:12px; border:2px solid var(--dim);
                    border-top-color:var(--accent2); border-radius:50%; animation:spin .7s linear infinite; }
   @keyframes spin { to { transform:rotate(360deg); } }
+  #settings-btn { background:var(--chip); color:var(--ink); border:1px solid var(--line); border-radius:8px;
+             padding:6px 10px; font-size:13px; font-weight:650; cursor:pointer; position:relative; }
+  #settings-btn:hover { border-color:var(--accent2); }
+  .popover { position:absolute; top:calc(100% + 6px); right:0; background:var(--panel); border:1px solid var(--line);
+             border-radius:10px; padding:14px; width:240px; box-shadow:0 8px 24px rgba(0,0,0,.4); z-index:25; display:none; }
+  .popover.open { display:block; }
+  .popover h4 { margin:0 0 8px; font-size:11px; text-transform:uppercase; letter-spacing:.05em; color:var(--mut); }
+  .seg { display:flex; gap:4px; margin-bottom:14px; }
+  .seg button { flex:1; background:var(--chip); color:var(--mut); border:1px solid var(--line); border-radius:7px;
+                padding:6px 4px; font-size:11.5px; font-weight:650; cursor:pointer; }
+  .seg button.active { color:var(--accent2); border-color:var(--accent2); background:rgba(76,159,254,.12); }
+  .popover .toggle { width:100%; justify-content:space-between; }
+
+  /* rolling pipeline-movements ticker */
+  #movebar { overflow:hidden; background:var(--panel2); border-bottom:1px solid var(--line); position:sticky; top:57px; z-index:19; }
+  #movebar .mvtrack { display:flex; width:max-content; animation:mvscroll 40s linear infinite; }
+  #movebar:hover .mvtrack { animation-play-state:paused; }
+  @keyframes mvscroll { from { transform:translateX(0); } to { transform:translateX(-50%); } }
+  .mvcard { flex:0 0 auto; padding:8px 18px; border-right:1px solid var(--line); min-width:150px; }
+  .mvcard .acc { font-weight:700; font-size:12px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:200px; }
+  .mvcard .what { color:var(--mut); font-size:11px; margin-top:1px; white-space:nowrap; }
+  .mvcard .delta { font-size:11.5px; font-weight:700; margin-top:2px; }
+  .mv-up { color:var(--good); }
+  .mv-down { color:var(--bad); }
+  .mv-flat, .mv-neutral { color:var(--mut); }
 
   .kpis { display:grid; grid-template-columns:repeat(6,1fr); gap:12px; padding:16px 20px 4px; }
   .kpi { background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:12px 14px; min-height:78px; }
@@ -55,6 +80,13 @@
   .toggle input { accent-color:var(--accent2); }
 
   .ttrack { display:grid; grid-template-columns:repeat(auto-fit,minmax(230px,1fr)); gap:12px; margin-bottom:20px; }
+  .fmix { margin-bottom:16px; }
+  .fmix-bar { display:flex; height:10px; border-radius:6px; overflow:hidden; background:var(--chip); margin:10px 0 12px; }
+  .fmix-bar i { display:block; height:100%; }
+  .fmix-rows { display:flex; gap:20px; flex-wrap:wrap; font-size:12.5px; color:var(--mut); }
+  .fmix-rows .r { display:flex; align-items:center; gap:4px; }
+  .fmix-rows .r b.dot { display:inline-block; width:9px; height:9px; border-radius:2px; margin-right:3px; }
+  .fmix-rows .r b { color:var(--ink); font-variant-numeric:tabular-nums; }
   .card { background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:14px; }
   .card h3 { margin:0 0 10px; font-size:13px; font-weight:700; }
   .card .row { display:flex; justify-content:space-between; padding:4px 0; border-bottom:1px dashed var(--line); font-size:12.5px; }
@@ -166,7 +198,21 @@
   <div class="spacer"></div>
   <button id="refresh" title="Resync with Org62">↻ Refresh</button>
   <span id="s-src" class="badge live">live</span>
+  <div style="position:relative">
+    <button id="settings-btn" title="Settings">⚙</button>
+    <div class="popover" id="settings-pop">
+      <h4>Role mode</h4>
+      <div class="seg" id="role-seg">
+        <button data-mode="fsl">FSL</button>
+        <button data-mode="service_cloud">Service Cloud</button>
+      </div>
+      <h4>Display</h4>
+      <label class="toggle"><input type="checkbox" id="movetog"> Show pipeline movements bar</label>
+    </div>
+  </div>
 </header>
+
+<div id="movebar" style="display:none"><div class="mvtrack" id="mvtrack"></div></div>
 
 <div class="kpis" id="kpis"></div>
 
@@ -244,8 +290,17 @@ function pctMeta(a){
   return `<span style="color:${col}">${arrow} ${Math.abs(p)}%</span> vs avg month · ${a.last30Events} events`;
 }
 
-let DATA = { forecast:null, whitespace:null, activity:null };
-let state = { tab:"open", q:"", sortKey:null, sortDir:-1, showDead:false, actMonth:null };
+let DATA = { forecast:null, whitespace:null, activity:null, movements:null };
+function loadSettings(){
+  try { return { roleMode:"fsl", showMovements:true, ...JSON.parse(localStorage.getItem("cc_settings")||"{}") }; }
+  catch(e){ return { roleMode:"fsl", showMovements:true }; }
+}
+function saveSettings(){
+  localStorage.setItem("cc_settings", JSON.stringify({roleMode:state.roleMode, showMovements:state.showMovements}));
+}
+const SETTINGS=loadSettings();
+let state = { tab:"open", q:"", sortKey:null, sortDir:-1, showDead:false, actMonth:null,
+              roleMode:SETTINGS.roleMode, showMovements:SETTINGS.showMovements };
 
 // live (non-dead) row helpers -------------------------------------------------
 const liveRows   = () => ((DATA.forecast?.rows)||[]).filter(r=>!r.isDead);
@@ -256,17 +311,27 @@ async function fetchAll(){
   const btn=document.getElementById("refresh");
   btn.disabled=true; btn.innerHTML='<span class="spin"></span> Syncing';
   try {
-    const [f,w,a] = await Promise.all([
+    const [f,w,a,m] = await Promise.all([
       fetch("/api/forecast").then(r=>r.json()),
-      fetch("/api/whitespace").then(r=>r.json()),
-      fetch("/api/activity").then(r=>r.json()),
+      fetch("/api/whitespace?role_mode="+state.roleMode).then(r=>r.json()),
+      fetch("/api/activity?role_mode="+state.roleMode).then(r=>r.json()),
+      fetch("/api/movements").then(r=>r.json()),
     ]);
-    DATA.forecast=f; DATA.whitespace=w; DATA.activity=a;
+    DATA.forecast=f; DATA.whitespace=w; DATA.activity=a; DATA.movements=m;
     setBadge(f,w);
-    renderKPIs(); render();
+    renderKPIs(); render(); renderMovebar();
   } finally {
     btn.disabled=false; btn.innerHTML="↻ Refresh";
   }
+}
+
+async function refetchMode(){
+  const [w,a] = await Promise.all([
+    fetch("/api/whitespace?role_mode="+state.roleMode).then(r=>r.json()),
+    fetch("/api/activity?role_mode="+state.roleMode).then(r=>r.json()),
+  ]);
+  DATA.whitespace=w; DATA.activity=a;
+  renderKPIs(); render();
 }
 
 function setBadge(f,w){
@@ -277,6 +342,31 @@ function setBadge(f,w){
     if(f.error||w.error){ err.style.display="block";
       err.textContent="Showing bundled snapshot — no live Org62 connection. "+(f.error||w.error); }
     else err.style.display="none"; }
+}
+
+// ---- rolling pipeline-movements ticker -------------------------------------
+function mvArrow(dir){ return dir==="up"?"▲":dir==="down"?"▼":"•"; }
+function mvCard(x){
+  const lines=[];
+  if(x.stage) lines.push(`<div class="delta mv-${x.stage.direction}">${mvArrow(x.stage.direction)} ${esc(x.stage.old)} → ${esc(x.stage.new)}</div>`);
+  if(x.amount) lines.push(`<div class="delta mv-${x.amount.direction}">${mvArrow(x.amount.direction)} ${x.amount.delta>=0?"+":""}${fmtK(x.amount.delta)}</div>`);
+  if(x.comment) lines.push(`<div class="delta mv-neutral">• new comment</div>`);
+  return `<div class="mvcard">
+    <div class="acc">${esc(x.account)||"—"}</div>
+    <div class="what">${esc(x.opp)||""}</div>
+    ${lines.join("")}
+  </div>`;
+}
+function renderMovebar(){
+  const bar=document.getElementById("movebar"), track=document.getElementById("mvtrack");
+  if(!state.showMovements){ bar.style.display="none"; return; }
+  const items=(DATA.movements?.items)||[];
+  if(!items.length){ bar.style.display="none"; return; }
+  bar.style.display="block";
+  // duplicate the run so the CSS translateX(-50%) loop is seamless
+  track.innerHTML=items.map(mvCard).join("")+items.map(mvCard).join("");
+  // slow, readable pace regardless of item count (~90px/sec)
+  track.style.animationDuration=Math.max(30, items.length*18)+"s";
 }
 
 // ---- KPI band -------------------------------------------------------------
@@ -328,18 +418,21 @@ function coachFlags(r){
 // ---- tab views ------------------------------------------------------------
 function viewOpen(){
   const open=openRows();
-  const groups=["Commit","Best Case","Pipeline"];
+  const groups=[
+    {label:"Commit", key:"commit", col:"var(--good)"},
+    {label:"Best Case", key:"best", col:"var(--accent2)"},
+    {label:"Pipeline", key:"pipeline", col:"var(--mut)"},
+  ];
   const target=open.reduce((s,r)=>s+(r.amount||0),0)||1; // no quota field verified — target = total open pipe
-  const tiles=groups.map(label=>{
-    const rs=open.filter(r=>CAT(r.category).includes(label.toLowerCase().split(" ")[0]));
-    const v=rs.reduce((s,r)=>s+(r.amount||0),0); const pct=Math.min(100,Math.round(v/target*100));
-    return `<div class="card"><h3>${label} talk track</h3>
-      <div class="row"><span class="k">Opportunities</span><b>${rs.length}</b></div>
-      <div class="row"><span class="k">Value</span><b>${fmt(v)}</b></div>
-      <div class="row"><span class="k">% of open pipe</span><b>${pct}%</b></div>
-      <div class="vbar"><i style="width:${pct}%"></i></div></div>`;
-  }).join("");
-  return `<div class="ttrack">${tiles}</div>` + table(open,[
+  const stats=groups.map(g=>{
+    const rs=open.filter(r=>CAT(r.category).includes(g.key));
+    const v=rs.reduce((s,r)=>s+(r.amount||0),0);
+    return {...g, n:rs.length, v, pct:Math.min(100,Math.round(v/target*100))};
+  });
+  const bar=stats.map(s=>`<i style="width:${s.pct}%;background:${s.col}"></i>`).join("");
+  const rows=stats.map(s=>`<div class="r"><b class="dot" style="background:${s.col}"></b>${s.label}: <b>${s.n}</b> opps · <b>${fmt(s.v)}</b> · <b>${s.pct}%</b></div>`).join("");
+  const mix=`<div class="card fmix"><h3>Forecast mix</h3><div class="fmix-bar">${bar}</div><div class="fmix-rows">${rows}</div></div>`;
+  return mix + table(open,[
     {k:"category",t:"Cat",render:catPill},
     {k:"name",t:"Opportunity",render:(_,r)=>oppLink(r)},
     {k:"account",t:"Account"},
@@ -546,7 +639,6 @@ function noteBlock(lbl,txt){ return txt?`<div class="notebox"><div class="lbl">$
 function openDetail(id){
   const r=findRow(id); if(!r) return;
   const se=r.seNotes||{}, ae=r.aeNotes||{};
-  const products=(r.products||[]).map(p=>`<tr><td>${esc(p.name)}</td><td class="num">${p.qty??"—"}</td><td class="num">${fmt(p.total)}</td></tr>`).join("");
   const acts=(r.activity||[]).slice(0,8).map(e=>`<div class="actitem"><div>${esc(e.subject)||"(no subject)"}</div>
       <div class="meta">${fmtDate(e.date)} · ${esc(e.type)} · ${e.mins} min</div></div>`).join("");
   const notes=[noteBlock("SE Comments"+(se.commentDate?` · ${fmtDate(se.commentDate)}`:""),se.comments),
@@ -568,12 +660,27 @@ function openDetail(id){
       <div class="kv"><span class="k">Amount</span><span class="amt">${fmt(r.amount)}</span></div>
       <div class="sect"><h4>SE notes</h4>${notes||`<div class="muted">No SE notes.</div>`}</div>
       <div class="sect"><h4>AE notes &amp; activity</h4>${aenotes||`<div class="muted">No AE notes.</div>`}${acts||""}</div>
-      <div class="sect"><h4>Products (${(r.products||[]).length})</h4>
-        ${products?`<table class="ptable"><tr><th>Product</th><th class="num">Qty</th><th class="num">Total</th></tr>${products}</table>`:`<div class="muted">No line items.</div>`}</div>
+      <div class="sect"><h4 id="prod-h">Products</h4><div id="prod-body" class="muted">Loading products…</div></div>
     </div>`;
   document.getElementById("drawer").classList.add("open");
   document.getElementById("scrim").style.display="block";
   document.getElementById("dclose").onclick=closeDetail;
+  if(r.id) loadProducts(r.id); else document.getElementById("prod-body").textContent="No line items.";
+}
+async function loadProducts(id){
+  try {
+    const d=await fetch(`/api/opportunity/${id}/products`).then(r=>r.json());
+    const rows=d.rows||[];
+    const h=document.getElementById("prod-h"), b=document.getElementById("prod-body");
+    if(!h||!b) return; // drawer closed / a different opp opened before this resolved
+    h.textContent=`Products (${rows.length})`;
+    b.innerHTML=rows.length?`<table class="ptable"><tr><th>Product</th><th class="num">Qty</th><th class="num">Total</th></tr>${
+      rows.map(p=>`<tr><td>${esc(p.name)}</td><td class="num">${p.qty??"—"}</td><td class="num">${fmt(p.total)}</td></tr>`).join("")
+    }</table>` : `<div class="muted">No line items.</div>`;
+  } catch(e){
+    const b=document.getElementById("prod-body");
+    if(b) b.textContent="Failed to load products.";
+  }
 }
 function closeDetail(){
   document.getElementById("drawer").classList.remove("open");
@@ -612,6 +719,25 @@ document.querySelectorAll(".tab").forEach(t=>t.onclick=()=>{
   render();
 });
 document.getElementById("refresh").onclick=fetchAll;
+
+// ---- settings popover -------------------------------------------------------
+const settingsBtn=document.getElementById("settings-btn"), settingsPop=document.getElementById("settings-pop");
+settingsBtn.onclick=e=>{ e.stopPropagation(); settingsPop.classList.toggle("open"); };
+settingsPop.onclick=e=>e.stopPropagation();
+document.addEventListener("click",()=>settingsPop.classList.remove("open"));
+
+function syncSettingsUI(){
+  document.querySelectorAll("#role-seg button").forEach(b=>b.classList.toggle("active", b.dataset.mode===state.roleMode));
+  document.getElementById("movetog").checked=state.showMovements;
+}
+document.querySelectorAll("#role-seg button").forEach(b=>b.onclick=()=>{
+  if(state.roleMode===b.dataset.mode) return;
+  state.roleMode=b.dataset.mode; saveSettings(); syncSettingsUI(); refetchMode();
+});
+document.getElementById("movetog").onchange=e=>{
+  state.showMovements=e.target.checked; saveSettings(); renderMovebar();
+};
+syncSettingsUI();
 
 fetchAll();
 </script>
