@@ -45,6 +45,8 @@
                 padding:6px 4px; font-size:11.5px; font-weight:650; cursor:pointer; }
   .seg button.active { color:var(--accent2); border-color:var(--accent2); background:rgba(76,159,254,.12); }
   .popover .toggle { width:100%; justify-content:space-between; }
+  .popover .ver { margin-top:14px; padding-top:10px; border-top:1px dashed var(--line); font-size:11px; color:var(--dim); }
+  .popover .ver b { color:var(--mut); }
   .tginputs { display:flex; gap:8px; margin-bottom:2px; }
   .tginputs label { flex:1; font-size:10.5px; color:var(--mut); display:flex; flex-direction:column; gap:3px; }
   .tginputs input { background:var(--chip); border:1px solid var(--line); border-radius:6px; color:var(--ink);
@@ -90,6 +92,17 @@
   .kpi .val { font-size:22px; font-weight:750; margin-top:6px; font-variant-numeric:tabular-nums; }
   .kpi .meta { color:var(--dim); font-size:11px; margin-top:2px; }
   .kpi.risk .val { color:var(--warn); }
+  .kpi.risk { cursor:pointer; }
+  .kpi.risk:hover { border-color:var(--warn); }
+  .kpi.risk.active { border-color:var(--warn); background:rgba(255,176,32,.08); }
+  .kpi[data-tab] { cursor:pointer; }
+  .kpi[data-tab]:hover { border-color:var(--accent2); }
+
+  .risk-panel { margin:0 20px 16px; }
+  .risk-panel h3 { color:var(--warn); }
+  .risk-rules { margin:8px 0; font-size:12.5px; }
+  .risk-rules div { padding:3px 0; }
+  .risk-rules b { font-variant-numeric:tabular-nums; }
 
   .tabs { display:flex; gap:4px; padding:12px 20px 0; border-bottom:1px solid var(--line); flex-wrap:wrap; }
   .tab { padding:9px 15px; cursor:pointer; color:var(--mut); border-bottom:2px solid transparent; font-weight:650; font-size:13px; }
@@ -132,6 +145,8 @@
   tr:hover td { background:rgba(76,159,254,.05); }
   tr.dead td { opacity:.5; }
   tr.aligned td:first-child { border-left:3px solid var(--accent2); }
+  tr.risk-row td:first-child { border-left:3px solid var(--warn); }
+  tr.risk-row td { background:rgba(255,176,32,.06); }
   @keyframes rowFlash { from { background:rgba(76,159,254,.35); } to { background:transparent; } }
   tr.flash td { animation:rowFlash 1.6s ease; }
   .amt { font-variant-numeric:tabular-nums; font-weight:650; }
@@ -244,7 +259,8 @@
         <input type="text" id="aligned-ses" placeholder="e.g. Jane Smith, John Doe" style="width:100%;margin-top:4px">
       </label>
       <h4 style="margin-top:14px">Display</h4>
-      <label class="toggle"><input type="checkbox" id="movetog"> Show pipeline movements bar</label>
+      <label class="toggle"><input type="checkbox" id="movetog"> Show pipeline bar</label>
+      <div class="ver">Version <b id="app-ver"></b></div>
     </div>
   </div>
 </header>
@@ -253,6 +269,7 @@
 <div id="tooltip" class="tooltip"></div>
 
 <div class="kpis" id="kpis"></div>
+<div id="risk-panel" class="card risk-panel" style="display:none"></div>
 
 <div class="tabs" id="tabs">
   <div class="tab active" data-tab="open">Open Pipe</div>
@@ -271,6 +288,7 @@
 <aside id="drawer"><div id="drawer-inner"></div></aside>
 
 <script>
+const APP_VERSION = "1.1";
 const SF = "https://org62.lightning.force.com/lightning/r/Opportunity/";
 const STALE_DAYS = 90;
 const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
@@ -354,7 +372,14 @@ async function saveSettings(){
 }
 let state = { tab:"open", q:"", sortKey:null, sortDir:-1, showDead:false, actMonth:null,
               roleMode:"fsl", showMovements:true, targets:{relatedHrs:250, facingHrs:125},
-              alignedSEs:"", showAlignedOnly:false };
+              alignedSEs:"", showAlignedOnly:false, riskHighlight:false };
+
+// switch tab from anywhere (tab bar, KPI clicks, movement-chip jump, risk-panel toggle)
+function switchTab(name){
+  document.querySelectorAll(".tab").forEach(x=>x.classList.toggle("active", x.dataset.tab===name));
+  state.tab=name; state.sortKey=null; state.sortDir=-1; state.q="";
+  render();
+}
 
 // Aligned-SE helpers: "aligned" = whitespace opp whose Service AE (sfbase__OpportunityTeam__c
 // Selling Role = 'Service Cloud AE') matches one of the comma-separated names in Settings.
@@ -455,11 +480,7 @@ function renderMovebar(){
 }
 // click a movement chip -> open its detail drawer + jump to it in the Open Pipe table
 function jumpToOpenRow(id){
-  if(state.tab!=="open"){
-    document.querySelectorAll(".tab").forEach(x=>x.classList.toggle("active", x.dataset.tab==="open"));
-    state.tab="open"; state.sortKey=null; state.sortDir=-1; state.q="";
-    render();
-  }
+  if(state.tab!=="open") switchTab("open");
   const tr=document.querySelector(`#view tr[data-id="${id}"]`);
   if(!tr) return;
   tr.scrollIntoView({behavior:"smooth", block:"center"});
@@ -489,10 +510,16 @@ function jumpToOpenRow(id){
 })();
 
 // ---- KPI band -------------------------------------------------------------
+// "At risk" = open opp flagged by ANY of: stale (no activity >= STALE_DAYS),
+// no AE next step logged, or close date already past. Shared by the KPI sum
+// and the Open Pipe row-highlight, so they can never drift apart.
+function riskRows(){
+  return openRows().filter(r=>{const d=daysSince(r.lastActivity);
+    return (d!=null&&d>=STALE_DAYS)||!r.aeNotes?.nextStep||isPast(r.close);});
+}
 function renderKPIs(){
   const won=liveRows().filter(r=>r.isWon), open=openRows();
-  const risk=open.filter(r=>{const d=daysSince(r.lastActivity);
-    return (d!=null&&d>=STALE_DAYS)||!r.aeNotes?.nextStep||isPast(r.close);});
+  const risk=riskRows();
   const closedWon=won.reduce((s,r)=>s+(r.amount||0),0);
   const pipeline=open.reduce((s,r)=>s+(r.amount||0),0);
   const atRisk=risk.reduce((s,r)=>s+(r.amount||0),0);
@@ -501,20 +528,54 @@ function renderKPIs(){
   const aligned=wsRows.filter(isAligned);
   const alignedTotal=aligned.reduce((s,r)=>s+(r.amount||0),0);
   const kpis=[
-    {lab:"Closed Won (FY27)", val:fmtK(closedWon), meta:won.length+" deals won"},
-    {lab:"Open Pipeline",     val:fmtK(pipeline),  meta:open.length+" open opps"},
-    {lab:"Pipeline at Risk",  val:fmtK(atRisk),    meta:risk.length+" flagged", cls:"risk"},
+    {lab:"Closed Won (FY27)", val:fmtK(closedWon), meta:won.length+" deals won", tab:"closed"},
+    {lab:"Open Pipeline",     val:fmtK(pipeline),  meta:open.length+" open opps", tab:"open"},
+    {lab:"Pipeline at Risk",  val:fmtK(atRisk),    meta:risk.length+" flagged", cls:"risk", key:"risk"},
     {lab:"New Business (ANZ)",val:fmtK(DATA.whitespace?.total),
-     meta:(DATA.whitespace?.count||0)+" white-space opps<br>"+aligned.length+" Aligned ("+fmtK(alignedTotal)+")"},
-    {lab:"Time Spent (Qtr)",  val:act.currentQuarterMinutes!=null?hrs(act.currentQuarterMinutes)+" h":"—", meta:pctMeta(act), cls:"time"},
+     meta:(DATA.whitespace?.count||0)+" white-space opps<br>"+aligned.length+" Aligned ("+fmtK(alignedTotal)+")", tab:"whitespace"},
+    {lab:"Time Spent (Qtr)",  val:act.currentQuarterMinutes!=null?hrs(act.currentQuarterMinutes)+" h":"—", meta:pctMeta(act), cls:"time", tab:"activity"},
     {lab:"Dead / Excluded",   val:String(((DATA.forecast?.rows)||[]).filter(r=>r.isDead).length), meta:"omitted from KPIs"},
   ];
   document.getElementById("kpis").innerHTML=kpis.map(k=>`
-    <div class="kpi ${k.cls||''}">
+    <div class="kpi ${k.cls||''}${k.key==='risk'&&state.riskHighlight?' active':''}"
+         ${k.key?`data-key="${k.key}"`:''} ${k.tab?`data-tab="${k.tab}"`:''}>
       <div class="lab">${k.lab}</div>
       <div class="val">${k.val}</div>
       <div class="meta">${k.meta}</div>
     </div>`).join("");
+  document.querySelectorAll(".kpi[data-tab]").forEach(el=>{
+    el.onclick=()=>{
+      // clicking any other KPI drops the Pipeline-at-Risk highlight/panel
+      if(state.riskHighlight){ state.riskHighlight=false; renderKPIs(); renderRiskPanel(); }
+      switchTab(el.dataset.tab);
+    };
+  });
+  const riskEl=document.querySelector('.kpi[data-key="risk"]');
+  if(riskEl) riskEl.onclick=toggleRiskPanel;
+}
+// click "Pipeline at Risk" -> highlight matching rows in Open Pipe + explain the logic below the KPI band
+function toggleRiskPanel(){
+  state.riskHighlight=!state.riskHighlight;
+  if(state.riskHighlight && state.tab!=="open") switchTab("open");
+  renderKPIs(); renderRiskPanel(); render();
+}
+function renderRiskPanel(){
+  const panel=document.getElementById("risk-panel");
+  if(!state.riskHighlight){ panel.style.display="none"; return; }
+  const risk=riskRows();
+  const staleN=risk.filter(r=>{const d=daysSince(r.lastActivity); return d!=null&&d>=STALE_DAYS;}).length;
+  const noNextN=risk.filter(r=>!r.aeNotes?.nextStep).length;
+  const pastN=risk.filter(r=>isPast(r.close)).length;
+  const total=risk.reduce((s,r)=>s+(r.amount||0),0);
+  panel.style.display="block";
+  panel.innerHTML=`<h3>⚠ Pipeline at Risk — why these opps are flagged</h3>
+    <div class="muted">An open opp counts as "at risk" if <b>any</b> of these are true:</div>
+    <div class="risk-rules">
+      <div>• Stale — no activity logged in ${STALE_DAYS}+ days &nbsp; <b>${staleN}</b></div>
+      <div>• No AE next step logged &nbsp; <b>${noNextN}</b></div>
+      <div>• Close date already in the past &nbsp; <b>${pastN}</b></div>
+    </div>
+    <div class="muted">${risk.length} opp(s) · ${fmtK(total)} — highlighted in the Open Pipe table below.</div>`;
 }
 
 // ---- shared cell renderers ------------------------------------------------
@@ -555,6 +616,7 @@ function viewOpen(){
   const bar=stats.map(s=>`<i style="width:${s.pct}%;background:${s.col}"></i>`).join("");
   const rows=stats.map(s=>`<div class="r"><b class="dot" style="background:${s.col}"></b>${s.label}: <b>${s.n}</b> opps · <b>${fmt(s.v)}</b> · <b>${s.pct}%</b></div>`).join("");
   const mix=`<div class="card fmix"><h3>Forecast mix</h3><div class="fmix-bar">${bar}</div><div class="fmix-rows">${rows}</div></div>`;
+  const riskIds=state.riskHighlight?new Set(riskRows().map(r=>r.id)):null;
   return mix + table(open,[
     {k:"category",t:"Cat",render:catPill},
     {k:"name",t:"Opportunity",render:(_,r)=>oppLink(r)},
@@ -566,7 +628,7 @@ function viewOpen(){
     {k:"amount",t:"Amount",num:true,fmt:fmt},
     {k:"lastActivity",t:"Last activity",render:v=>{const d=daysSince(v);
       return d!=null&&d>=STALE_DAYS?`<span class="flag stale">${fmtDate(v)} ⚠</span>`:fmtDate(v);}},
-  ]);
+  ], riskIds?r=>riskIds.has(r.id)?"risk-row":"":null);
 }
 
 function viewClosed(){
@@ -882,12 +944,7 @@ function render(){
   });
 }
 
-document.querySelectorAll(".tab").forEach(t=>t.onclick=()=>{
-  document.querySelectorAll(".tab").forEach(x=>x.classList.remove("active"));
-  t.classList.add("active");
-  state.tab=t.dataset.tab; state.sortKey=null; state.sortDir=-1; state.q="";
-  render();
-});
+document.querySelectorAll(".tab").forEach(t=>t.onclick=()=>switchTab(t.dataset.tab));
 document.getElementById("refresh").onclick=fetchAll;
 
 // ---- settings popover -------------------------------------------------------
@@ -921,6 +978,8 @@ tgInput("tg-facing","facingHrs");
 document.getElementById("aligned-ses").onchange=e=>{
   state.alignedSEs=e.target.value; saveSettings(); renderKPIs(); if(state.tab==="whitespace") render();
 };
+
+document.getElementById("app-ver").textContent = APP_VERSION;
 
 (async function boot(){
   const s = await loadSettings();
