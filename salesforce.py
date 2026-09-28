@@ -301,7 +301,8 @@ class Org62:
             soql = (
                 "SELECT sfbase__Opportunity__c, sfbase__User__r.Name "
                 "FROM sfbase__OpportunityTeam__c "
-                f"WHERE TeamRoleLookup__r.Name = 'Service Cloud AE' AND sfbase__Opportunity__c IN ({ids})"
+                f"WHERE TeamRoleLookup__r.Name = 'Service Cloud AE' AND sfbase__Opportunity__c IN ({ids}) "
+                "ORDER BY sfbase__Opportunity__c ASC, CreatedDate DESC"
             )
             out.extend(self.query(soql))
         return out
@@ -323,7 +324,8 @@ class Org62:
             ids = ",".join(f"'{i}'" for i in batch)
             soql = (
                 "SELECT Opportunity__c, SE_Name__r.Name FROM Deal_Contribution__c "
-                f"WHERE Opportunity_Role__c = 'Core SE' AND Opportunity__c IN ({ids})"
+                f"WHERE Opportunity_Role__c = 'Core SE' AND Opportunity__c IN ({ids}) "
+                "ORDER BY Opportunity__c ASC, CreatedDate DESC"
             )
             out.extend(self.query(soql))
         return out

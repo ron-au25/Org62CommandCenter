@@ -332,7 +332,9 @@ def _se_ae_by_opp(opp_ids):
     data, so a failure is logged and degrades to empty maps rather than failing
     the whole tab — but it IS logged, since blank columns are also the
     signature of a wrong object/field or API-version drift and must not pass
-    silently. First contributor per opp wins if a deal has more than one.
+    silently. Most-recent contributor per opp wins if a deal has more than
+    one active row (the queries in salesforce.py order CreatedDate DESC per
+    opp, so `setdefault`'s "first wins" is really "most recent wins").
     """
     ae_by_opp, se_by_opp = {}, {}
     if not opp_ids:
