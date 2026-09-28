@@ -546,7 +546,7 @@ def flatten_movements(data, days=30):
         rec["comment_date"] = date
 
     items = []
-    for rec in opps.values():
+    for oid, rec in opps.items():
         amount_events, stage_events = rec["amount_events"], rec["stage_events"]
         if not amount_events and not stage_events and not rec["comment_date"]:
             continue
@@ -564,7 +564,7 @@ def flatten_movements(data, days=30):
         if rec["comment_date"]:
             dates.append(rec["comment_date"])
         items.append({
-            "opp": rec["opp"], "account": rec["account"], "date": max(dates) if dates else "",
+            "id": oid, "opp": rec["opp"], "account": rec["account"], "date": max(dates) if dates else "",
             "amount": amount_block, "stage": stage_block, "comment": bool(rec["comment_date"]),
         })
 

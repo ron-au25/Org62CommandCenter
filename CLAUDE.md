@@ -1,7 +1,8 @@
 # Org62 Command Center — project instructions
 
 ## What this is
-2-tab web app (Flask) over Org62 (Salesforce internal prod).
+5-tab web app (Flask) over Org62 (Salesforce internal prod) — Open Pipe, Closed Pipe,
+New Business (Whitespace), Coach (Coverage), Activity Log.
 Data owner: Ron Shpilman — SE, Field Service, ANZ region.
 
 ## Org62 connection (the durable path)

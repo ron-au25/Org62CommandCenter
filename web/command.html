@@ -61,18 +61,28 @@
   .tgmark { position:absolute; top:-3px; bottom:-3px; width:2px; background:var(--ink); opacity:.55; }
   .tgmeta { font-size:11px; margin-top:5px; }
 
-  /* rolling pipeline-movements ticker */
-  #movebar { overflow:hidden; background:var(--panel2); border-bottom:1px solid var(--line); position:sticky; top:57px; z-index:19; }
-  #movebar .mvtrack { display:flex; width:max-content; animation:mvscroll 40s linear infinite; }
-  #movebar:hover .mvtrack { animation-play-state:paused; }
-  @keyframes mvscroll { from { transform:translateX(0); } to { transform:translateX(-50%); } }
-  .mvcard { flex:0 0 auto; padding:8px 18px; border-right:1px solid var(--line); min-width:150px; }
-  .mvcard .acc { font-weight:700; font-size:12px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:200px; }
-  .mvcard .what { color:var(--mut); font-size:11px; margin-top:1px; white-space:nowrap; }
-  .mvcard .delta { font-size:11.5px; font-weight:700; margin-top:2px; }
+  /* static pipeline-movements strip: top 10 latest, one line, hover for full detail */
+  #movebar { background:var(--panel2); border-bottom:1px solid var(--line); position:sticky; top:57px; z-index:19; }
+  #movebar .mvtrack { display:flex; overflow-x:auto; scrollbar-width:thin; }
+  .mvchip { flex:0 0 auto; display:flex; flex-direction:column; gap:2px; padding:5px 12px; border-right:1px solid var(--line);
+            font-size:11.5px; white-space:nowrap; cursor:pointer; }
+  .mvchip:hover { background:rgba(76,159,254,.08); }
+  .mvchip .acc { font-weight:700; max-width:150px; overflow:hidden; text-overflow:ellipsis; }
+  .mvchip .mv-row { display:flex; gap:6px; }
+  .mvchip .delta { font-weight:700; }
   .mv-up { color:var(--good); }
   .mv-down { color:var(--bad); }
   .mv-flat, .mv-neutral { color:var(--mut); }
+
+  /* shared rich hover tooltip (movement chips, activity calendar) */
+  .tooltip { position:fixed; z-index:50; display:none; background:var(--panel); border:1px solid var(--line);
+           border-radius:9px; padding:10px 13px; font-size:12px; line-height:1.55; max-width:280px;
+           box-shadow:0 8px 24px rgba(0,0,0,.4); pointer-events:none; }
+  .tooltip .acc { font-weight:700; font-size:13px; }
+  .tooltip .opp { color:var(--mut); font-size:11.5px; margin-top:1px; }
+  .tooltip .row { margin-top:5px; display:flex; gap:6px; }
+  .tooltip .row .lbl { color:var(--mut); min-width:48px; }
+  .tooltip .date { color:var(--dim); font-size:11px; margin-top:6px; }
 
   .kpis { display:grid; grid-template-columns:repeat(6,1fr); gap:12px; padding:16px 20px 4px; }
   .kpi { background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:12px 14px; min-height:78px; }
@@ -122,6 +132,8 @@
   tr:hover td { background:rgba(76,159,254,.05); }
   tr.dead td { opacity:.5; }
   tr.aligned td:first-child { border-left:3px solid var(--accent2); }
+  @keyframes rowFlash { from { background:rgba(76,159,254,.35); } to { background:transparent; } }
+  tr.flash td { animation:rowFlash 1.6s ease; }
   .amt { font-variant-numeric:tabular-nums; font-weight:650; }
   .chip { background:var(--chip); color:var(--accent2); border-radius:6px; padding:1px 7px; font-size:11.5px; font-weight:650; }
   .pill { border-radius:6px; padding:1px 7px; font-size:11px; font-weight:700; }
@@ -238,6 +250,7 @@
 </header>
 
 <div id="movebar" style="display:none"><div class="mvtrack" id="mvtrack"></div></div>
+<div id="tooltip" class="tooltip"></div>
 
 <div class="kpis" id="kpis"></div>
 
@@ -395,30 +408,85 @@ function setBadge(f,w){
     else err.style.display="none"; }
 }
 
-// ---- rolling pipeline-movements ticker -------------------------------------
+// ---- shared rich hover tooltip (colored, multi-row; native title can't do that) --
+function showTip(el, html){
+  const tip=document.getElementById("tooltip");
+  tip.innerHTML=html;
+  tip.style.left="-9999px"; tip.style.top="0px"; tip.style.display="block";
+  const r=el.getBoundingClientRect(), tw=tip.offsetWidth, th=tip.offsetHeight;
+  const left=Math.min(r.left, window.innerWidth-tw-10);
+  let top=r.bottom+6;
+  if(top+th>window.innerHeight-10) top=r.top-th-6;
+  tip.style.left=Math.max(10,left)+"px"; tip.style.top=Math.max(10,top)+"px";
+}
+function hideTip(){ document.getElementById("tooltip").style.display="none"; }
+
+// ---- static pipeline-movements strip (top 10 latest, compressed) ----------
+const MV_SHOW = 10;
+let mvItems = [];
 function mvArrow(dir){ return dir==="up"?"▲":dir==="down"?"▼":"•"; }
-function mvCard(x){
-  const lines=[];
-  if(x.stage) lines.push(`<div class="delta mv-${x.stage.direction}">${mvArrow(x.stage.direction)} ${esc(x.stage.old)} → ${esc(x.stage.new)}</div>`);
-  if(x.amount) lines.push(`<div class="delta mv-${x.amount.direction}">${mvArrow(x.amount.direction)} ${x.amount.delta>=0?"+":""}${fmtK(x.amount.delta)}</div>`);
-  if(x.comment) lines.push(`<div class="delta mv-neutral">• new comment</div>`);
-  return `<div class="mvcard">
+function mvTipHTML(x){
+  const rows=[];
+  if(x.stage) rows.push(`<div class="row"><span class="lbl">Stage</span><span class="mv-${x.stage.direction}">${mvArrow(x.stage.direction)} ${esc(x.stage.old)} → ${esc(x.stage.new)}</span></div>`);
+  if(x.amount) rows.push(`<div class="row"><span class="lbl">Amount</span><span class="mv-${x.amount.direction}">${mvArrow(x.amount.direction)} ${fmtK(x.amount.old)} → ${fmtK(x.amount.new)} (${x.amount.delta>=0?"+":""}${fmtK(x.amount.delta)})</span></div>`);
+  if(x.comment) rows.push(`<div class="row mv-neutral">• New comment logged</div>`);
+  return `<div class="acc">${esc(x.account)||"—"}</div>
+    <div class="opp">${esc(x.opp)||""}</div>
+    ${rows.join("")}
+    ${x.date?`<div class="date">${fmtDate(x.date)}</div>`:""}`;
+}
+function mvChip(x,i){
+  const deltas=[];
+  if(x.stage) deltas.push(`<span class="delta mv-${x.stage.direction}">${mvArrow(x.stage.direction)} ${esc(stageShort(x.stage.new))}</span>`);
+  if(x.amount) deltas.push(`<span class="delta mv-${x.amount.direction}">${mvArrow(x.amount.direction)} ${x.amount.delta>=0?"+":""}${fmtK(x.amount.delta)}</span>`);
+  if(x.comment) deltas.push(`<span class="delta mv-neutral">•</span>`);
+  return `<div class="mvchip" data-i="${i}">
     <div class="acc">${esc(x.account)||"—"}</div>
-    <div class="what">${esc(x.opp)||""}</div>
-    ${lines.join("")}
+    <div class="mv-row">${deltas.join("")}</div>
   </div>`;
 }
 function renderMovebar(){
   const bar=document.getElementById("movebar"), track=document.getElementById("mvtrack");
   if(!state.showMovements){ bar.style.display="none"; return; }
-  const items=(DATA.movements?.items)||[];
-  if(!items.length){ bar.style.display="none"; return; }
+  mvItems=((DATA.movements?.items)||[]).slice(0, MV_SHOW);
+  if(!mvItems.length){ bar.style.display="none"; return; }
   bar.style.display="block";
-  // duplicate the run so the CSS translateX(-50%) loop is seamless
-  track.innerHTML=items.map(mvCard).join("")+items.map(mvCard).join("");
-  // slow, readable pace regardless of item count (~90px/sec)
-  track.style.animationDuration=Math.max(30, items.length*18)+"s";
+  track.innerHTML=mvItems.map(mvChip).join("");
 }
+// click a movement chip -> open its detail drawer + jump to it in the Open Pipe table
+function jumpToOpenRow(id){
+  if(state.tab!=="open"){
+    document.querySelectorAll(".tab").forEach(x=>x.classList.toggle("active", x.dataset.tab==="open"));
+    state.tab="open"; state.sortKey=null; state.sortDir=-1; state.q="";
+    render();
+  }
+  const tr=document.querySelector(`#view tr[data-id="${id}"]`);
+  if(!tr) return;
+  tr.scrollIntoView({behavior:"smooth", block:"center"});
+  tr.classList.remove("flash"); void tr.offsetWidth; // restart animation if clicked twice
+  tr.classList.add("flash");
+}
+// delegated hover/click -> shared rich tooltip + row jump (movebar track is persistent, chips inside it aren't)
+(function(){
+  const track=document.getElementById("mvtrack");
+  track.addEventListener("mouseover", e=>{
+    const chip=e.target.closest(".mvchip"); if(!chip) return;
+    const x=mvItems[+chip.dataset.i]; if(!x) return;
+    showTip(chip, mvTipHTML(x));
+  });
+  track.addEventListener("mouseout", e=>{
+    const chip=e.target.closest(".mvchip");
+    if(!chip || chip.contains(e.relatedTarget)) return;
+    hideTip();
+  });
+  track.addEventListener("click", e=>{
+    const chip=e.target.closest(".mvchip"); if(!chip) return;
+    const x=mvItems[+chip.dataset.i]; if(!x || !x.id) return;
+    hideTip();
+    openDetail(x.id);
+    jumpToOpenRow(x.id);
+  });
+})();
 
 // ---- KPI band -------------------------------------------------------------
 function renderKPIs(){
@@ -649,8 +717,17 @@ function viewActivity(){
     <div class="sect"><h4>Activity calendar</h4>${calendarHtml(a.recent||[])}</div>`;
 }
 
+// rich tooltip content for one calendar day's account-grouped activity chip
+let calTipGroups = [];
+function calEvTipHTML(g){
+  const rows=g.evs.map(e=>`<div class="row"><span class="lbl">${e.mins}m</span><span>${esc(e.subject||"(untitled)")}</span></div>`).join("");
+  return `<div class="acc" style="color:${acctColor(g.account)}">${esc(g.account)||"—"}</div>
+    <div class="opp">${(g.mins/60).toFixed(1)}h total · ${g.evs.length} activit${g.evs.length===1?"y":"ies"}</div>
+    ${rows}`;
+}
 // month calendar of recent activity ------------------------------------------
 function calendarHtml(events){
+  calTipGroups=[];
   if(!state.actMonth){ const t=new Date(); state.actMonth=t.getFullYear()+"-"+String(t.getMonth()+1).padStart(2,"0"); }
   const [Y,M]=state.actMonth.split("-").map(Number);
   const byDay={}; let monMin=0, monN=0; const monAccts=new Set();
@@ -671,9 +748,9 @@ function calendarHtml(events){
     const groups={};
     evs.forEach(e=>{ const k=e.account||"—"; (groups[k]=groups[k]||{account:e.account,mins:0,evs:[]}); groups[k].mins+=e.mins||0; groups[k].evs.push(e); });
     const chips=Object.values(groups).sort((a,b)=>b.mins-a.mins).map(g=>{
-      const subs=g.evs.map(e=>`${e.subject||"(untitled)"} · ${e.mins}m`).join("\n");
       const label=(g.account||"—")+(g.evs.length>1?` · ${g.evs.length}`:"");
-      return `<div class="ev" style="border-left-color:${acctColor(g.account)}" title="${esc((g.account||'—'))} · ${(g.mins/60).toFixed(1)}h\n${esc(subs)}">${esc(label)}<span class="evh">${(g.mins/60).toFixed(1)}h</span></div>`;
+      const ci=calTipGroups.length; calTipGroups.push(g);
+      return `<div class="ev" style="border-left-color:${acctColor(g.account)}" data-ci="${ci}">${esc(label)}<span class="evh">${(g.mins/60).toFixed(1)}h</span></div>`;
     }).join("");
     cells+=`<div class="cell${ds===todayStr?' today':''}">
       <div class="dnum">${d}${dm?`<span class="dmin">${(dm/60).toFixed(1)}h</span>`:""}</div>${chips}</div>`;
@@ -799,6 +876,10 @@ function render(){
   const cp=document.getElementById("cal-prev"), cn=document.getElementById("cal-next");
   if(cp) cp.onclick=()=>{ shiftMonth(-1); render(); };
   if(cn) cn.onclick=()=>{ shiftMonth(1); render(); };
+  document.querySelectorAll(".cal .ev").forEach(el=>{
+    el.onmouseenter=()=>showTip(el, calEvTipHTML(calTipGroups[+el.dataset.ci]));
+    el.onmouseleave=hideTip;
+  });
 }
 
 document.querySelectorAll(".tab").forEach(t=>t.onclick=()=>{

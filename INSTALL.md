@@ -108,7 +108,7 @@ this connected app, so describe it as the plain Flask dashboard it is):
 
 | # | Question | Answer for this app |
 |---|----------|---------------------|
-| 1 | What application is connecting (specific client name) | **Org62 Command Center** — a single-user Python/Flask dashboard run locally (`web/server.py`), bound to `127.0.0.1`. Authenticates by reusing my Salesforce CLI session and reads via REST API v62.0. Not a pipeline or shared service. |
+| 1 | What application is connecting (specific client name) | **Org62 Command Center** — a single-user Python/Flask dashboard run locally (`web/server.py`), bound to `127.0.0.1`. Authenticates by reusing my Salesforce CLI session and reads via REST API v64.0. Not a pipeline or shared service. |
 | 2 | Use case — why the *default CLI* connected app specifically | Personal SE dashboard over **my own** Org62 records (opportunities, pipeline, ANZ Field Service white-space, my activity/time) for fiscal-year planning. It has no Connected App of its own by design; it uses the OOTB CLI app as the sanctioned way to turn my CLI login into a REST token, rather than registering a bespoke app. **No AI/ML/LLM component** — it just renders SOQL results in a browser. |
 | 3 | Read-only or read/write | **Read-only.** SELECT SOQL only; no write code path. |
 | 4 | Frequency | **Manual / interactive only** — queries fire when I open the dashboard or click Refresh. No scheduler, no triggers. Low volume, one machine, working hours. |
