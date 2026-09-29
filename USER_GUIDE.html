@@ -49,6 +49,10 @@
   .kbd{ font-family:ui-monospace,monospace; background:#fff; border:1px solid #cbd5e0; border-bottom-width:2px;
         border-radius:5px; padding:1px 6px; font-size:12.5px; }
   footer{ text-align:center; color:#8b97a8; font-size:12.5px; margin-top:40px; }
+  .shot{ margin:16px 0; }
+  .shot img{ width:100%; display:block; border:1px solid #e2e8f0; border-radius:10px;
+        box-shadow:0 1px 2px rgba(16,24,40,.04); }
+  .shot figcaption{ margin-top:6px; font-size:12.5px; color:#8b97a8; text-align:center; }
 </style>
 </head>
 <body>
@@ -56,7 +60,7 @@
   <div class="inner">
     <div class="logo">62</div>
     <div>
-      <h1>Org62 Command Center</h1>
+      <h1>Org62 Command Center <span style="font-weight:400;opacity:.75;font-size:16px">v1.3</span></h1>
       <p>User guide — setup &amp; navigation · a local, read-only dashboard over your own Org62 opportunities</p>
     </div>
   </div>
@@ -199,10 +203,25 @@ cd FieldServiceCommandCenter</code></pre>
   just now; <span class="pill snap">snapshot</span> = showing a bundled fallback because the live
   connection wasn't available. The <b>↻ Refresh</b> button re-syncs with Org62 at any time.</p>
 
+  <h3>The pipeline bar</h3>
+  <p>A thin strip above the KPI band shows your <b>10 latest pipeline movements</b> — stage changes,
+  amount changes, and new comments on your open deals. Each chip is compressed to two lines (account
+  name, then the movement with an arrow); <b>hover a chip</b> for the full before/after detail in a
+  pop-up, and <b>click a chip</b> to open that opportunity's detail drawer and jump straight to its
+  highlighted row in the Open Pipe table below. Toggle it on/off in Settings (⚙).</p>
+
+  <figure class="shot">
+    <img src="screens/Org62 Pipe at Risk.jpeg" alt="KPI band with Pipeline at Risk expanded, Open Pipe tab below">
+    <figcaption>KPI band with "Pipeline at Risk" clicked open (shows the rule panel + highlighted rows), and the Open Pipe tab below it.</figcaption>
+  </figure>
+
   <h3>The KPI band</h3>
   <p>Six cards at a glance: Closed Won (this fiscal year), Open Pipeline, Pipeline at Risk (stale / no
   next step / past close date), New Business (ANZ white space, with how many are aligned to your SEs),
-  Time Spent this quarter, and a Dead/Excluded count.</p>
+  Time Spent this quarter, and a Dead/Excluded count. <b>Click Closed Won, Open Pipeline, New Business,
+  or Time Spent</b> to jump straight to that card's tab. <b>Click Pipeline at Risk</b> to highlight the
+  flagged rows in the Open Pipe table and show a panel underneath explaining exactly which rule flagged
+  each one, with live counts; click it again to hide both.</p>
 
   <h3>The five tabs</h3>
   <table>
@@ -224,8 +243,13 @@ cd FieldServiceCommandCenter</code></pre>
         <td>Where your time goes: this-quarter hours vs. your target, a by-quarter breakdown
         (Customer Facing / Customer Related / Non-customer), dead-deal activity alerts, coverage gaps
         (business deals in your accounts you're not on), time-by-account for the last 14 days, and a
-        month-by-month activity calendar.</td></tr>
+        month-by-month activity calendar — hover a day's activity chip for a full time breakdown.</td></tr>
   </table>
+
+  <figure class="shot">
+    <img src="screens/Org62 Activity Log.jpeg" alt="Activity Log tab">
+    <figcaption>The Activity Log tab — quarterly targets, time-by-quarter chart, dead-deal alerts, coverage gaps, and time-by-account.</figcaption>
+  </figure>
 
   <div class="note"><b>Handy interactions on every table:</b> click a <b>column header</b> to sort,
   type in the <b>filter box</b> to narrow by name / account / owner / stage, and <b>click any row</b>
@@ -234,7 +258,7 @@ cd FieldServiceCommandCenter</code></pre>
 
   <h2 id="settings">6. Settings (⚙)</h2>
   <p>The gear icon (top right) opens a small panel. Your choices are saved on your machine and persist
-  across restarts.</p>
+  across restarts. The app version is shown at the bottom of the panel.</p>
   <ul>
     <li><b>Role mode</b> — <b>FSL</b> (Field Service) or <b>Service Cloud</b>. Switches which product
     scope and contribution role the white-space and activity views use.</li>
@@ -242,8 +266,8 @@ cd FieldServiceCommandCenter</code></pre>
     the target bars on the Activity Log.</li>
     <li><b>Aligned SEs</b> — a comma-separated list of the Service AE names you're aligned to. Drives
     the “aligned” highlighting/filtering on the New Business tab and the KPI card.</li>
-    <li><b>Show pipeline movements bar</b> — toggles a scrolling ticker of recent amount / stage /
-    comment changes on your open deals.</li>
+    <li><b>Show pipeline bar</b> — toggles the pipeline-movements strip above the KPI band (see
+    “The pipeline bar” in section 5) on or off.</li>
   </ul>
   <div class="warn"><b>Aligned-SE names must match exactly</b> (case doesn't matter, but a nickname or
   typo won't match). If your “aligned” count looks suspiciously low or zero, check the spelling against
