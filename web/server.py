@@ -12,7 +12,10 @@ import json
 import os
 import re
 import sys
+import threading
+import time
 from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime, timezone
 
 from flask import Flask, jsonify, request, send_from_directory
 
@@ -359,9 +362,10 @@ def _se_ae_by_opp(opp_ids):
 SETTINGS_FILE = os.path.join(HERE, "settings_local.json")
 DEFAULT_SETTINGS = {
     "roleMode": "fsl",
-    "showMovements": True,
+    "showAlerts": True,
     "targets": {"relatedHrs": 250, "facingHrs": 125},
     "alignedSEs": "",
+    "pollMinutes": 30,
 }
 
 
@@ -382,8 +386,15 @@ def _save_settings(patch):
     current = _load_settings()
     if "roleMode" in patch and patch["roleMode"] in ("fsl", "service_cloud"):
         current["roleMode"] = patch["roleMode"]
-    if "showMovements" in patch:
-        current["showMovements"] = bool(patch["showMovements"])
+    if "showAlerts" in patch:
+        current["showAlerts"] = bool(patch["showAlerts"])
+    if "pollMinutes" in patch:
+        try:
+            mins = int(patch["pollMinutes"])
+        except (TypeError, ValueError):
+            mins = None
+        if mins is not None:
+            current["pollMinutes"] = max(1, min(240, mins))
     targets = patch.get("targets") or {}
     for key in ("relatedHrs", "facingHrs"):
         if key in targets:
@@ -492,7 +503,17 @@ def api_activity():
         return jsonify(snap)
 
 
-def flatten_movements(data, days=30):
+def _account_ids_from_movements(data):
+    """AccountIds touched by my open opps — feeds the alert-poll cheap-check cache."""
+    ids = set()
+    for h in data.get("history", []):
+        acct = (h.get("Opportunity") or {}).get("Account") or {}
+        if acct.get("Id"):
+            ids.add(acct["Id"])
+    return ids
+
+
+def flatten_movements(data, new_opps=None, days=30):
     """OpportunityHistory + comment-date rows -> one card per opportunity.
 
     No PrevStageName on OpportunityHistory, so stage-change direction is
@@ -500,8 +521,11 @@ def flatten_movements(data, days=30):
     is pre-sorted OpportunityId ASC, CreatedDate ASC). Multiple changes of the
     same type on the same opp within the window collapse into a single net
     amount move / latest stage move, rather than one card per row.
+    `new_opps` (optional) is the raw output of Org62.new_opps_in_my_accounts() —
+    folded in as "new_opp" kind items, undated-window (always shown, since a
+    brand-new opp is inherently recent).
     """
-    from datetime import datetime, timedelta, timezone
+    from datetime import timedelta
 
     now = datetime.now(timezone.utc)
     end = now.strftime("%Y-%m-%dT%H:%M:%S")
@@ -565,21 +589,123 @@ def flatten_movements(data, days=30):
         dates = [e["date"] for e in amount_events] + [e["date"] for e in stage_events]
         if rec["comment_date"]:
             dates.append(rec["comment_date"])
+        if stage_block and (stage_block["new"].startswith("Dead") or "Lost" in stage_block["new"]):
+            kind = "dead"
+        elif stage_block and "Won" in stage_block["new"]:
+            kind = "won"
+        elif stage_block:
+            kind = "stage"
+        elif amount_block:
+            kind = "amount"
+        else:
+            kind = "comment"
         items.append({
             "id": oid, "opp": rec["opp"], "account": rec["account"], "date": max(dates) if dates else "",
-            "amount": amount_block, "stage": stage_block, "comment": bool(rec["comment_date"]),
+            "amount": amount_block, "stage": stage_block, "comment": bool(rec["comment_date"]), "kind": kind,
+        })
+
+    for o in (new_opps or []):
+        acct = o.get("Account") or {}
+        items.append({
+            "id": o.get("Id"), "opp": o.get("Name"), "account": acct.get("Name"),
+            "date": o.get("CreatedDate") or "", "amount": None, "stage": None,
+            "comment": False, "kind": "new_opp",
         })
 
     items.sort(key=lambda x: x["date"], reverse=True)
     return {"source": "live", "items": items[:40]}
 
 
-@app.route("/api/movements")
-def api_movements():
+# --- alert-bar background poller ------------------------------------------
+# One shared in-memory cache, refreshed on a schedule (default 30 min, see
+# DEFAULT_SETTINGS["pollMinutes"]) by a single daemon thread. Every browser
+# tab/refresh reads this cache instead of triggering its own Org62 query —
+# that's what actually bounds Org62 traffic to one poll per interval no
+# matter how many tabs are open.
+_poll_lock = threading.Lock()
+_poll_state = {
+    "items": [],
+    "last_poll_at": None,   # datetime, UTC
+    "changed": False,       # true once, until the next /api/alerts fetch clears it
+    "account_ids": set(),
+    "known_opp_ids": set(),
+    "baseline_done": False,
+    "error": None,
+}
+
+
+def _run_poll():
+    now = datetime.now(timezone.utc)
+    with _poll_lock:
+        account_ids = set(_poll_state["account_ids"])
+        known_ids = set(_poll_state["known_opp_ids"])
+        is_first = not _poll_state["baseline_done"]
+
+    if not is_first:
+        try:
+            since_iso = _poll_state["last_poll_at"].strftime("%Y-%m-%dT%H:%M:%S.000+0000")
+            changed_count = org.changes_since(account_ids, since_iso)
+        except Exception as e:
+            with _poll_lock:
+                _poll_state["error"] = str(e)
+            return
+        if changed_count == 0:
+            with _poll_lock:
+                _poll_state["last_poll_at"] = now
+                _poll_state["error"] = None
+            return
+
     try:
-        return jsonify(flatten_movements(org.my_pipeline_movements()))
+        raw = org.my_pipeline_movements()
+        new_account_ids = _account_ids_from_movements(raw)
+        new_opp_records = org.new_opps_in_my_accounts(new_account_ids, known_ids)
+        flat = flatten_movements(raw, new_opps=(None if is_first else new_opp_records))
+        items = flat["items"]
+        updated_known = known_ids | {o["Id"] for o in new_opp_records if o.get("Id")}
     except Exception as e:
-        return jsonify({"source": "snapshot", "items": [], "error": str(e)})
+        with _poll_lock:
+            _poll_state["error"] = str(e)
+        return
+
+    with _poll_lock:
+        _poll_state.update({
+            "items": items, "last_poll_at": now, "account_ids": new_account_ids,
+            "known_opp_ids": updated_known, "baseline_done": True,
+            "changed": (not is_first) and bool(items), "error": None,
+        })
+
+
+def _poll_loop():
+    while True:
+        try:
+            last = _poll_state["last_poll_at"]
+            interval_min = _load_settings().get("pollMinutes", 30)
+            if last is None or (datetime.now(timezone.utc) - last).total_seconds() >= interval_min * 60:
+                _run_poll()
+        except Exception as e:
+            with _poll_lock:
+                _poll_state["error"] = str(e)
+        time.sleep(60)
+
+
+@app.route("/api/alerts/status")
+def api_alerts_status():
+    """Cheap, in-memory only — no Org62 call. Safe to poll every few seconds."""
+    with _poll_lock:
+        last = _poll_state["last_poll_at"]
+        return jsonify({
+            "last_poll_at": last.isoformat() if last else None,
+            "changed": _poll_state["changed"],
+            "error": _poll_state["error"],
+        })
+
+
+@app.route("/api/alerts")
+def api_alerts():
+    with _poll_lock:
+        items = list(_poll_state["items"])
+        _poll_state["changed"] = False  # frontend has now seen it
+        return jsonify({"source": "live", "items": items})
 
 
 _SF_ID_RE = re.compile(r"^[a-zA-Z0-9]{15,18}$")
@@ -600,5 +726,8 @@ def api_opportunity_products(opp_id):
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", "5057"))
+    # debug=False -> no werkzeug reloader -> single process -> safe to start
+    # exactly one poll thread here (no double-start risk).
+    threading.Thread(target=_poll_loop, daemon=True).start()
     # Bind loopback only — no app-level auth by design (see CLAUDE.md / SRD).
     app.run(host="127.0.0.1", port=port, debug=False)

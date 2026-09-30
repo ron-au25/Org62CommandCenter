@@ -269,7 +269,8 @@ class Org62:
         uid = self.my_user_id()
         history = self.query(
             "SELECT OpportunityId, Amount, PrevAmount, StageName, CreatedDate, "
-            "Opportunity.Name, Opportunity.Account.Name FROM OpportunityHistory "
+            "Opportunity.Name, Opportunity.Account.Id, Opportunity.Account.Name "
+            "FROM OpportunityHistory "
             "WHERE OpportunityId IN (SELECT OpportunityId FROM OpportunityTeamMember "
             f"WHERE UserId = '{uid}' AND Opportunity.IsClosed = false) "
             "ORDER BY OpportunityId ASC, CreatedDate ASC"
@@ -327,6 +328,47 @@ class Org62:
                 f"WHERE Opportunity_Role__c = 'Core SE' AND Opportunity__c IN ({ids}) "
                 "ORDER BY Opportunity__c ASC, CreatedDate DESC"
             )
+            out.extend(self.query(soql))
+        return out
+
+    def changes_since(self, account_ids, since_iso):
+        """Cheap poll check: any Opportunity under these accounts touched since `since_iso`?
+
+        Single aggregate COUNT — LastModifiedDate bumps on stage/amount/comment-field
+        edits AND on newly-created rows alike, so this one filter covers every alert
+        type the alert bar cares about. Callers should only run the expensive detail
+        queries (my_pipeline_movements / new_opps_in_my_accounts) when this is > 0.
+        """
+        if not account_ids:
+            return 0
+        out = 0
+        for batch in _chunks(sorted(account_ids), _ID_BATCH):
+            ids = ",".join(f"'{a}'" for a in batch)
+            recs = self.query(
+                "SELECT COUNT(Id) cnt FROM Opportunity "
+                f"WHERE AccountId IN ({ids}) AND LastModifiedDate > {since_iso}"
+            )
+            out += recs[0]["cnt"] if recs else 0
+        return out
+
+    def new_opps_in_my_accounts(self, account_ids, known_opp_ids):
+        """Opportunities under my accounts not already in a previously-seen id set.
+
+        Used by the alert bar's "new opportunity created" alert type. Scoped to
+        accounts from my currently-open opps (same set my_pipeline_movements() uses).
+        """
+        if not account_ids:
+            return []
+        out = []
+        known = ",".join(f"'{i}'" for i in known_opp_ids) if known_opp_ids else None
+        for batch in _chunks(sorted(account_ids), _ID_BATCH):
+            ids = ",".join(f"'{a}'" for a in batch)
+            soql = (
+                "SELECT Id, Name, Account.Name, CreatedDate FROM Opportunity "
+                f"WHERE AccountId IN ({ids})"
+            )
+            if known:
+                soql += f" AND Id NOT IN ({known})"
             out.extend(self.query(soql))
         return out
 

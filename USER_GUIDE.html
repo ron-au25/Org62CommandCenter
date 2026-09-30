@@ -60,7 +60,7 @@
   <div class="inner">
     <div class="logo">62</div>
     <div>
-      <h1>Org62 Command Center <span style="font-weight:400;opacity:.75;font-size:16px">v1.3</span></h1>
+      <h1>Org62 Command Center <span style="font-weight:400;opacity:.75;font-size:16px">v1.4</span></h1>
       <p>User guide — setup &amp; navigation · a local, read-only dashboard over your own Org62 opportunities</p>
     </div>
   </div>
@@ -79,6 +79,7 @@
       <li><a href="#settings">6. Settings (⚙)</a></li>
       <li><a href="#data">7. Where the data comes from</a></li>
       <li><a href="#trouble">8. Troubleshooting</a></li>
+      <li><a href="#release-notes">9. Release notes</a></li>
     </ul>
   </div>
 
@@ -203,12 +204,19 @@ cd FieldServiceCommandCenter</code></pre>
   just now; <span class="pill snap">snapshot</span> = showing a bundled fallback because the live
   connection wasn't available. The <b>↻ Refresh</b> button re-syncs with Org62 at any time.</p>
 
-  <h3>The pipeline bar</h3>
-  <p>A thin strip above the KPI band shows your <b>10 latest pipeline movements</b> — stage changes,
-  amount changes, and new comments on your open deals. Each chip is compressed to two lines (account
-  name, then the movement with an arrow); <b>hover a chip</b> for the full before/after detail in a
-  pop-up, and <b>click a chip</b> to open that opportunity's detail drawer and jump straight to its
-  highlighted row in the Open Pipe table below. Toggle it on/off in Settings (⚙).</p>
+  <h3>The alert bar</h3>
+  <p>A thin strip above the KPI band shows your <b>10 latest deal alerts</b> — stage changes, amount
+  changes, new comments, a deal going <b>dead</b> (✕), a deal <b>closing won</b> (🏆), or a <b>new
+  opportunity</b> (✨) created under an account you're already working. Each chip is compressed to two
+  lines (account name, then the alert with an icon/arrow); <b>hover a chip</b> for the full before/after
+  detail plus the exact date and time, and <b>click a chip</b> to open that opportunity's detail drawer
+  and jump straight to its highlighted row in the Open Pipe table below. Toggle it on/off in Settings (⚙).</p>
+  <p>The alert bar refreshes itself in the background — it doesn't wait for you to hit Refresh. Next to
+  the <span class="pill live">live</span> badge, a small clock shows <b>when it last checked</b> Org62;
+  a subtle pulsing dot lights up next to it the moment a real change is found. If you switch away from
+  the tab, an unseen alert also shows as a small red dot on the browser tab's favicon and a
+  “•” prefix on the tab title — both clear as soon as you come back. How often it checks is configurable
+  in Settings (default every 30 minutes) — see section 6.</p>
 
   <figure class="shot">
     <img src="screens/Org62 Pipe at Risk.jpeg" alt="KPI band with Pipeline at Risk expanded, Open Pipe tab below">
@@ -266,8 +274,10 @@ cd FieldServiceCommandCenter</code></pre>
     the target bars on the Activity Log.</li>
     <li><b>Aligned SEs</b> — a comma-separated list of the Service AE names you're aligned to. Drives
     the “aligned” highlighting/filtering on the New Business tab and the KPI card.</li>
-    <li><b>Show pipeline bar</b> — toggles the pipeline-movements strip above the KPI band (see
-    “The pipeline bar” in section 5) on or off.</li>
+    <li><b>Show alert bar</b> — toggles the deal-alerts strip above the KPI band (see
+    “The alert bar” in section 5) on or off.</li>
+    <li><b>Check every N min</b> — how often the app polls Org62 in the background for new alerts
+    (1–240 minutes, default 30). Takes effect within about a minute of changing it — no restart needed.</li>
   </ul>
   <div class="warn"><b>Aligned-SE names must match exactly</b> (case doesn't matter, but a nickname or
   typo won't match). If your “aligned” count looks suspiciously low or zero, check the spelling against
@@ -301,6 +311,29 @@ cd FieldServiceCommandCenter</code></pre>
         <code>00D000000000062</code>.</td></tr>
     <tr><td>Copied the folder and it won't run</td>
         <td>No action needed — <code>run.sh</code> detects a stale environment and rebuilds it automatically.</td></tr>
+  </table>
+
+  <h2 id="release-notes">9. Release notes</h2>
+  <p>What changed between versions, newest first.</p>
+  <table>
+    <tr><th>Version</th><th>What changed</th></tr>
+    <tr><td><b>v1.4</b><br>30 Sep 2026</td>
+        <td>New <b>alert bar</b> (renamed from “pipeline bar”): auto-polls Org62 in the background
+        (default every 30 min, configurable in Settings) instead of only refreshing on demand — a cheap
+        change-check runs first, and the fuller query only runs if something actually moved, to keep
+        Org62 load minimal. Added a last-checked clock + subtle pulsing dot next to the
+        <span class="pill live">live</span> badge, a browser-tab favicon/title badge for unseen alerts,
+        and three new alert types: deal <b>dead</b> (✕), deal <b>closed won</b> (🏆), and <b>new
+        opportunity created</b> under an account you're working (✨). Alert hover cards now show the
+        exact date and time.</td></tr>
+    <tr><td><b>v1.3</b></td>
+        <td>Added in-guide screenshots and fixed several places where this guide had drifted from the
+        live app (pipeline-bar behaviour, clickable/navigable KPI cards, Pipeline-at-Risk drill-down,
+        Activity Log calendar hover). Added the version number to this guide's header.</td></tr>
+    <tr><td><b>v1.2</b></td>
+        <td>Fixed a data-accuracy bug where Core SE / Service AE could show a stale name after a rep
+        reassignment — the underlying queries now resolve to the most recent contributor per
+        opportunity instead of an arbitrary one.</td></tr>
   </table>
 
   <footer>Org62 Command Center · read-only, loopback-only, no write-back · your login stays in the Salesforce CLI.</footer>
