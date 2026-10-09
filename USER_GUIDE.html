@@ -242,8 +242,9 @@ cd FieldServiceCommandCenter</code></pre>
         <td>Deals that have closed. Shows Closed Won total; a <b>“Show dead”</b> toggle reveals lost/dead deals.</td></tr>
     <tr><td><span class="tabname">New Business (ANZ White Space)</span></td>
         <td>ANZ opportunities with in-scope product where you're <em>not</em> yet tagged — i.e. new
-        opportunities to pursue. Rows aligned to your Service AEs are highlighted; a <b>“Show only
-        aligned”</b> toggle filters to those.</td></tr>
+        opportunities to pursue. Covers open stage 02–04 deals closing this fiscal year of type
+        <b>New Business, Add-On Business or Upgrade</b> (renewals and swaps are left out). Rows aligned
+        to your Service AEs are highlighted; a <b>“Show only aligned”</b> toggle filters to those.</td></tr>
     <tr><td><span class="tabname">Forecasting Coach</span></td>
         <td>Open deals that need attention, ranked by number of signals: past close date, stale (90+
         days no activity), no next step, or no amount.</td></tr>
@@ -253,13 +254,10 @@ cd FieldServiceCommandCenter</code></pre>
         (business deals in your accounts you're not on), time-by-account for the last 14 days, and a
         month-by-month activity calendar — hover a day's activity chip for a full time breakdown.</td></tr>
     <tr><td><span class="tabname">Product Footprint</span></td>
-        <td>Field Service family licences and dollars per account, grouped by product type (Field
-        Service, Scheduler, Asset, Health Cloud, Contact Center, Add-ons). Two toggles:
-        <b>My accounts / ANZ</b> (“my” = accounts on deals where you have a Deal Contribution) and
-        <b>Won / Pipeline</b>. <b>Won</b> = the active installed base (active Assets), with $ shown as
-        annual recurring revenue; <b>Pipeline</b> = open stage 02–04 New / Add-On Business / Upgrade line items
-        closing this fiscal year (renewals excluded). All $ in USD. Click an account to see its
-        product lines (pipeline rows link to the opportunity).</td></tr>
+        <td>Field Service family licences and dollars per account, colour-coded by product type, with
+        a heatmap showing where each product is concentrated. Switch between your accounts and all
+        of ANZ, and between what's installed and what's in pipeline. See
+        <a href="#footprint">“The Product Footprint tab”</a> below.</td></tr>
   </table>
 
   <figure class="shot">
@@ -271,6 +269,50 @@ cd FieldServiceCommandCenter</code></pre>
   type in the <b>filter box</b> to narrow by name / account / owner / stage, and <b>click any row</b>
   to open a detail drawer with SE &amp; AE notes, activity, and product line items. Opportunity names
   link straight to the record in Org62.</div>
+
+  <h3 id="footprint">The Product Footprint tab</h3>
+  <p>Shows how much Field Service family product each account has, split into six colour-coded
+  types: <b>Field Service</b> (blue), <b>Scheduler</b> (teal), <b>Asset</b> (amber, Asset Scheduling
+  and Asset Service Lifecycle Management), <b>Health Cloud</b> (pink, Home Health: Remote Caregiver /
+  Field Scheduler), <b>Contact Center</b> (purple, Workforce Management / Quality Management) and
+  <b>Add-ons</b> (orange, Appointment Assistant / Visual Remote Assistant). All $ are in USD.</p>
+
+  <figure class="shot">
+    <img src="screens/Org62 Product Footprint.jpeg" alt="Product Footprint tab, ANZ installed base, sorted by Scheduler">
+    <figcaption>Product Footprint (demo data): installed base with the Scheduler card clicked, so accounts are sorted by Scheduler, highest first.</figcaption>
+  </figure>
+
+  <p><b>Three toggles</b> along the top:</p>
+  <ul>
+    <li><b>My accounts / ANZ</b>: “My accounts” = accounts on deals where you have a Deal
+    Contribution. “ANZ” = every Australian and New Zealand account.</li>
+    <li><b>Won (installed) / Pipeline</b>: <b>Won</b> is what the customer has today, taken from
+    their <em>active</em> Assets in Org62. $ is annual recurring revenue (monthly price × licences ×
+    12). <b>Pipeline</b> is open stage 02–04 opportunity lines closing this fiscal year, of type New
+    Business, Add-On Business or Upgrade (renewals excluded). $ is the line total.</li>
+    <li><b>Heat by $ / Heat by licences</b>: picks what the heatmap colours, and what the card
+    sorting below uses.</li>
+  </ul>
+
+  <p><b>Reading the page:</b></p>
+  <ul>
+    <li><b>Type cards</b> show total licences, $, account count and each type's <b>% share</b> of the
+    total, with a small share bar. The full-width bar under the cards shows the same mix at a glance.</li>
+    <li><b>Click a card to sort the table by that type, highest first.</b> The card is highlighted and
+    the matching column header shows ▼. Click <b>Total</b> to sort by overall size. Column headers
+    still sort as normal.</li>
+    <li><b>Heatmap cells</b> show licences (top) and $ (bottom) for each account and type. The
+    stronger the colour, the bigger that account is <em>for that type</em>. Each column is shaded on
+    its own scale, so smaller types like Asset still stand out. That means compare colours down a
+    column, not across a row.</li>
+    <li>The thin coloured strip under each account name is that account's own product mix.</li>
+    <li><b>Click an account</b> to open its product lines. In Pipeline view each line links to its
+    opportunity, and edition upgrades are tagged <span class="pill" style="background:#e8f1ff;color:#2f6fd0">Upgrade</span>.</li>
+  </ul>
+  <div class="note"><b>Worth knowing:</b> some big Scheduler lines show <b>$0</b>. That's how those
+  active Assets are priced in Org62, not a missing value. Contact Center has no ANZ installed base yet,
+  so it only shows numbers in Pipeline. The tab loads on first open (it can take a few seconds) and
+  reloads when you hit ↻ Refresh.</div>
 
   <h2 id="settings">6. Settings (⚙)</h2>
   <p>The gear icon (top right) opens a small panel. Your choices are saved on your machine and persist
@@ -327,7 +369,8 @@ cd FieldServiceCommandCenter</code></pre>
     <tr><th>Version</th><th>What changed</th></tr>
     <tr><td><b>v1.5</b><br>9 Oct 2026</td>
         <td>New <b>Product Footprint</b> tab: licences and USD by product type per account, with
-        My accounts / ANZ and Won (installed base, ARR) / Pipeline toggles. Broadened the FSL product
+        My accounts / ANZ and Won (installed base, ARR) / Pipeline toggles, colour-coded types, a
+        heatmap (by $ or licences) and click-a-card-to-sort. Broadened the FSL product
         scope used by New Business and the Coach coverage gaps to include Salesforce Scheduler (incl.
         add-ons), Asset Scheduling, Asset Service Lifecycle Management, Health Cloud Home Health (Remote
         Caregiver / Field Scheduler), Appointment Assistant, Visual Remote Assistant, and Contact Center
