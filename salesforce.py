@@ -28,10 +28,28 @@ def _chunks(seq, size):
 #   OpportunityLineItem rows; LIKE '%Agentforce for Service%' -> 18 catalog
 #   rows (all "...Add-on - <Edition>" variants) / 32,995 line items. Both
 #   real/active, not catalog-only.
+# - FSL scope (verified via PricebookEntry, 2026-10-09): ProductCode '-FSL-'
+#   covers Field Service, Salesforce Scheduler (incl. Additional Appointments
+#   add-on), Asset Scheduling, Asset Service Lifecycle Mgmt, Health Cloud -
+#   Remote Caregiver (= Home Health), Appointment Assistant, Visual Remote
+#   Assistant. '-WEM-' = Agentforce Contact Center - Workforce Management.
+#   Name matches catch what the codes miss: GCPD variants (code 'CDC'),
+#   Health Cloud - Field Scheduler (code HLS-PNM), Frontline WFM, and the
+#   inactive Contact Center - Quality Management (no pricebook entry; kept
+#   for older opps). No 'FSL' in product names except old training SKUs.
 ROLE_MODES = {
     "fsl": {
         "label": "FSL",
-        "sku_clause": "Product2.Name LIKE '%Field Service%'",
+        "sku_clause": (
+            "(Product2.Name LIKE '%Field Service%'"
+            " OR Product2.ProductCode LIKE '%-FSL-%'"
+            " OR Product2.ProductCode LIKE '%-WEM-%'"
+            " OR Product2.Name LIKE '%Salesforce Scheduler%'"
+            " OR Product2.Name LIKE 'Asset Scheduling%'"
+            " OR Product2.Name LIKE 'Health Cloud - Field Scheduler%'"
+            " OR Product2.Name LIKE '%Workforce Management%'"
+            " OR Product2.Name LIKE '%Quality Management%')"
+        ),
         "role": "Service Cloud FSL Specialist",
     },
     "service_cloud": {
@@ -76,14 +94,29 @@ class Org62:
 
     # --- queries ----------------------------------------------------------
     def _rest(self, path):
-        """GET an Org62 REST path via the CLI (it supplies its own session)."""
-        out = subprocess.run(
-            ["sf", "api", "request", "rest", path, "--target-org", self.alias],
-            capture_output=True,
-            text=True,
-        )
+        """GET an Org62 REST path via the CLI (it supplies its own session).
+
+        `timeout` matters here: the background alert poller (web/server.py)
+        calls this from a daemon thread with no outer watchdog, so a single
+        hung/slow CLI invocation (seen in practice — e.g. a stalled npm
+        update-check) would otherwise block that thread forever, freezing
+        the poll clock silently. `stderr` alone isn't a reliable error
+        source either — the CLI writes its "update available" nag to
+        stderr on effectively every call, which can mask a real stdout
+        error, so failures report both streams.
+        """
+        try:
+            out = subprocess.run(
+                ["sf", "api", "request", "rest", path, "--target-org", self.alias],
+                capture_output=True,
+                text=True,
+                timeout=45,
+            )
+        except subprocess.TimeoutExpired:
+            raise RuntimeError("`sf api request rest` timed out after 45s")
         if out.returncode != 0:
-            raise RuntimeError(f"`sf api request rest` failed: {out.stderr or out.stdout}")
+            raise RuntimeError(f"`sf api request rest` failed (exit {out.returncode}): "
+                                f"stdout={out.stdout!r} stderr={out.stderr!r}")
         return json.loads(out.stdout)
 
     def query(self, soql):
@@ -224,8 +257,10 @@ class Org62:
         Verified against Org62:
         - ANZ = Account.BillingCountry in AU/NZ (Opp region fields unreliable).
         - open + stages 02/03/04, closing between today and end of this FY.
-        - business only: Type in New Business / Add-On Business (skip
-          Renewal / SOW / Success Plan / Transfer / Upgrade).
+        - business only: Type in New Business / Add-On Business / Upgrade
+          (skip Renewal / Swap / SOW / Success Plan / Transfer). Upgrade kept
+          because edition upgrades carry real seat expansion (e.g. RTIO GDI
+          Expansion: ~42 active FS seats -> 954 UE seats).
         - whitespace = no Deal_Contribution__c with Opportunity_Role__c
           matching the mode's role (this is the real "deal contribution"
           object; OpportunityTeamMember has no such role in its picklist).
@@ -246,7 +281,7 @@ class Org62:
             "WHERE IsClosed = false "
             "AND (StageName LIKE '02%' OR StageName LIKE '03%' OR StageName LIKE '04%') "
             "AND CloseDate >= TODAY AND CloseDate = THIS_FISCAL_YEAR "
-            "AND Type IN ('New Business','Add-On Business') "
+            "AND Type IN ('New Business','Add-On Business','Upgrade') "
             "AND Account.BillingCountry IN ('AU','NZ','Australia','New Zealand') "
             f"AND Id IN (SELECT OpportunityId FROM OpportunityLineItem WHERE {sku_clause}) "
             "AND Id NOT IN (SELECT Opportunity__c FROM Deal_Contribution__c "
@@ -351,24 +386,23 @@ class Org62:
             out += recs[0]["cnt"] if recs else 0
         return out
 
-    def new_opps_in_my_accounts(self, account_ids, known_opp_ids):
-        """Opportunities under my accounts not already in a previously-seen id set.
+    def new_opps_in_my_accounts(self, account_ids, since_iso):
+        """Opportunities under my accounts created since `since_iso`.
 
         Used by the alert bar's "new opportunity created" alert type. Scoped to
         accounts from my currently-open opps (same set my_pipeline_movements() uses).
+        Date-bounded (not an ever-growing NOT IN id list — that variant blew the
+        CLI's request-header size limit after enough poll cycles accumulated ids).
         """
         if not account_ids:
             return []
         out = []
-        known = ",".join(f"'{i}'" for i in known_opp_ids) if known_opp_ids else None
         for batch in _chunks(sorted(account_ids), _ID_BATCH):
             ids = ",".join(f"'{a}'" for a in batch)
             soql = (
                 "SELECT Id, Name, Account.Name, CreatedDate FROM Opportunity "
-                f"WHERE AccountId IN ({ids})"
+                f"WHERE AccountId IN ({ids}) AND CreatedDate > {since_iso}"
             )
-            if known:
-                soql += f" AND Id NOT IN ({known})"
             out.extend(self.query(soql))
         return out
 
@@ -378,4 +412,67 @@ class Org62:
             "SELECT Product2.Name, Quantity, TotalPrice FROM OpportunityLineItem "
             f"WHERE OpportunityId = '{opp_id}'"
         )
+        return self.query(soql)
+
+    def my_contribution_account_ids(self):
+        """AccountIds of every opp I'm a Deal_Contribution__c contributor on (any role, any year)."""
+        uid = self.my_user_id()
+        recs = self.query(
+            "SELECT Opportunity__r.AccountId FROM Deal_Contribution__c "
+            f"WHERE SE_Name__c = '{uid}'"
+        )
+        return sorted({(r.get("Opportunity__r") or {}).get("AccountId")
+                       for r in recs if (r.get("Opportunity__r") or {}).get("AccountId")})
+
+    def product_footprint(self, scope="anz", status="won"):
+        """FSL-scope product footprint rows for the Product Footprint tab.
+
+        Verified against Org62 (2026-10-09):
+        - status="won" = installed base from **active Assets** (Status='Active'),
+          not closed-won line items (summing those double-counts renewals).
+          Licences = Asset.Quantity__c (standard Quantity is empty). $ =
+          NormalizedMonthlyUnitPrice__c (monthly per unit; TotalPrice__c =
+          qty x NMUP x TermMonths, i.e. TCV) — server annualises to ARR.
+          Not AccountProductFootprint__c: its TotalQuantity__c also sums
+          Inactive-but-linked $0 Scheduler allotment assets.
+        - status="pipe" = open line items, same opp filters as
+          anz_fsl_whitespace() (stage 02/03/04, closing today..FY end,
+          New Business / Add-On / Upgrade — no renewals or swaps).
+        - scope="mine" = my Deal_Contribution__c (SE_Name__c) footprint: accounts
+          of my contributed opps for "won", my contributed opps for "pipe".
+          scope="anz" = Account.BillingCountry AU/NZ.
+        - convertCurrency() returns the running user's currency (USD for Ron).
+        Product scope reuses ROLE_MODES["fsl"]["sku_clause"] so it never drifts
+        from New Business.
+        """
+        sku_clause = ROLE_MODES["fsl"]["sku_clause"]
+        anz = "('AU','NZ','Australia','New Zealand')"
+        if status == "won":
+            base = (
+                "SELECT AccountId, Account.Name, Product2.Name, Product2.ProductCode, "
+                "Quantity__c, convertCurrency(NormalizedMonthlyUnitPrice__c) FROM Asset "
+                f"WHERE Status = 'Active' AND {sku_clause}"
+            )
+            if scope == "anz":
+                return self.query(f"{base} AND Account.BillingCountry IN {anz}")
+            out = []
+            for batch in _chunks(self.my_contribution_account_ids(), _ID_BATCH):
+                ids = ",".join(f"'{a}'" for a in batch)
+                out.extend(self.query(f"{base} AND AccountId IN ({ids})"))
+            return out
+        soql = (
+            "SELECT OpportunityId, Opportunity.Name, Opportunity.Type, Opportunity.AccountId, "
+            "Opportunity.Account.Name, Product2.Name, Product2.ProductCode, Quantity, "
+            "convertCurrency(TotalPrice) FROM OpportunityLineItem "
+            f"WHERE {sku_clause} AND Opportunity.IsClosed = false "
+            "AND (Opportunity.StageName LIKE '02%' OR Opportunity.StageName LIKE '03%' "
+            "OR Opportunity.StageName LIKE '04%') "
+            "AND Opportunity.CloseDate >= TODAY AND Opportunity.CloseDate = THIS_FISCAL_YEAR "
+            "AND Opportunity.Type IN ('New Business','Add-On Business','Upgrade') "
+        )
+        if scope == "anz":
+            soql += f"AND Opportunity.Account.BillingCountry IN {anz}"
+        else:
+            soql += ("AND OpportunityId IN (SELECT Opportunity__c FROM Deal_Contribution__c "
+                     f"WHERE SE_Name__c = '{self.my_user_id()}')")
         return self.query(soql)

@@ -185,6 +185,31 @@
   .legend { display:flex; gap:14px; margin-top:10px; font-size:11.5px; color:var(--mut); flex-wrap:wrap; }
   .legend b { display:inline-block; width:9px; height:9px; border-radius:2px; margin-right:5px; }
 
+  /* product footprint */
+  .fp-bar { display:flex; gap:12px; align-items:center; flex-wrap:wrap; margin-bottom:14px; }
+  .fp-bar .seg { margin-bottom:0; min-width:220px; }
+  .fp-types { display:grid; grid-template-columns:repeat(auto-fit,minmax(170px,1fr)); gap:12px; margin-bottom:18px; }
+  .fp-types .card { border-top:3px solid var(--tc,var(--line)); cursor:pointer; }
+  .fp-types .card:hover { border-color:var(--tc,var(--accent2)); }
+  .fp-types .card.active { border-color:var(--tc,var(--accent2)); background:rgba(76,159,254,.08); }
+  .fp-types .card h3 { display:flex; align-items:center; gap:6px; }
+  .fp-types .card .big { font-size:18px; font-weight:750; font-variant-numeric:tabular-nums; }
+  .fp-types .card .sub { color:var(--mut); font-size:11.5px; margin-top:3px; }
+  .fp-types .card .share { height:5px; background:var(--chip); border-radius:3px; margin-top:9px; overflow:hidden; }
+  .fp-types .card .share i { display:block; height:100%; background:var(--tc); }
+  .fp-types .card .pct { color:var(--tc); font-weight:700; font-size:11.5px; }
+  .tdot { display:inline-block; width:9px; height:9px; border-radius:2px; background:var(--tc); flex:none; }
+  .fp-mix { display:flex; height:12px; border-radius:6px; overflow:hidden; background:var(--chip); margin:0 0 16px; }
+  .fp-mix i { display:block; height:100%; background:var(--tc); }
+  td.fpc { padding:3px 4px; white-space:nowrap; font-variant-numeric:tabular-nums; font-size:12px; }
+  td.fpc .hm { border-radius:6px; padding:5px 8px; text-align:right; min-width:64px; }
+  td.fpc .q { color:var(--ink); font-weight:650; }
+  td.fpc .u { color:var(--mut); display:block; font-size:11px; }
+  td.fpc .hm.hot .u { color:var(--ink); opacity:.85; }
+  th .tdot { margin-right:5px; vertical-align:-1px; }
+  .fp-acmix { display:flex; height:4px; border-radius:2px; overflow:hidden; margin-top:5px; max-width:180px; background:var(--chip); }
+  .fp-acmix i { display:block; height:100%; background:var(--tc); }
+
   /* detail drawer */
   #scrim { position:fixed; inset:0; background:rgba(0,0,0,.5); z-index:30; display:none; }
   #drawer { position:fixed; top:0; right:0; height:100%; width:min(460px,92vw); background:var(--panel2);
@@ -288,6 +313,7 @@
   <div class="tab" data-tab="whitespace">New Business (ANZ White Space)</div>
   <div class="tab" data-tab="coach">Forecasting Coach</div>
   <div class="tab" data-tab="activity">Activity Log</div>
+  <div class="tab" data-tab="footprint">Product Footprint</div>
 </div>
 
 <main>
@@ -299,7 +325,7 @@
 <aside id="drawer"><div id="drawer-inner"></div></aside>
 
 <script>
-const APP_VERSION = "1.4";
+const APP_VERSION = "1.5";
 const SF = "https://org62.lightning.force.com/lightning/r/Opportunity/";
 const STALE_DAYS = 90;
 const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
@@ -383,7 +409,11 @@ async function saveSettings(){
 }
 let state = { tab:"open", q:"", sortKey:null, sortDir:-1, showDead:false, actMonth:null,
               roleMode:"fsl", showAlerts:true, pollMinutes:30, targets:{relatedHrs:250, facingHrs:125},
-              alignedSEs:"", showAlignedOnly:false, riskHighlight:false };
+              alignedSEs:"", showAlignedOnly:false, riskHighlight:false,
+              fpScope:"anz", fpStatus:"won", fpHeat:"usd" };
+// Product Footprint data, cached per "scope|status" and fetched lazily on first view
+// (not part of fetchAll — the installed-base query is heavier than the other tabs).
+const FP = { cache:{}, loading:null };
 
 // switch tab from anywhere (tab bar, KPI clicks, movement-chip jump, risk-panel toggle)
 function switchTab(name){
@@ -408,6 +438,7 @@ const openRows   = () => liveRows().filter(r=>!r.isClosed);
 const closedRows = () => ((DATA.forecast?.rows)||[]).filter(r=>r.isClosed); // dead handled by toggle
 
 async function fetchAll(){
+  FP.cache={}; // footprint re-fetches lazily on next view
   const btn=document.getElementById("refresh");
   btn.disabled=true; btn.innerHTML='<span class="spin"></span> Syncing';
   try {
@@ -744,6 +775,104 @@ function viewCoach(){
     `</tbody></table>`;
 }
 
+// ---- Product Footprint ------------------------------------------------------
+// Won = active installed base (Asset Status='Active'), $ = ARR (qty x monthly unit x 12).
+// Pipeline = open 02-04 New/Add-On Business/Upgrade line items this FY, $ = TotalPrice. All USD.
+const fpKey = () => state.fpScope+"|"+state.fpStatus;
+async function loadFootprint(){
+  const key=fpKey();
+  if(FP.cache[key] || FP.loading===key) return;
+  FP.loading=key;
+  try {
+    FP.cache[key]=await fetch(`/api/footprint?scope=${state.fpScope}&status=${state.fpStatus}`).then(r=>r.json());
+  } catch(e){
+    FP.cache[key]={source:"error", error:String(e), types:[], accounts:[], typeOrder:[]};
+  } finally {
+    FP.loading=null;
+  }
+  if(state.tab==="footprint" && fpKey()===key) render();
+}
+const fmtQ = n => n==null ? "—" : Math.round(n).toLocaleString();
+// one colour per product type (server PRODUCT_TYPE_ORDER), used by cards, mix bars and heatmap
+const FP_COLORS = {"Field Service":"#4c9ffe", "Scheduler":"#42c9c2", "Asset":"#ffcb6b",
+                   "Health Cloud":"#f06292", "Contact Center":"#c792ea", "Add-ons":"#f78c6c"};
+const fpColor = t => FP_COLORS[t] || "#8b97a8";
+// "#rrggbb" + alpha 0..1 -> rgba()
+const fpRgba = (hex,a) => `rgba(${parseInt(hex.slice(1,3),16)},${parseInt(hex.slice(3,5),16)},${parseInt(hex.slice(5,7),16)},${a.toFixed(3)})`;
+function viewFootprint(){
+  const seg=(id,cur,opts)=>`<div class="seg" id="${id}">${opts.map(([v,l])=>
+    `<button data-v="${v}" class="${cur===v?'active':''}">${l}</button>`).join("")}</div>`;
+  const won=state.fpStatus==="won", usdLab=won?"ARR (USD)":"Pipeline (USD)";
+  const bar=`<div class="fp-bar">
+    ${seg("fp-scope",state.fpScope,[["mine","My accounts"],["anz","ANZ"]])}
+    ${seg("fp-status",state.fpStatus,[["won","Won (installed)"],["pipe","Pipeline"]])}
+    ${seg("fp-heat",state.fpHeat,[["usd","Heat by $"],["qty","Heat by licences"]])}
+    <span class="muted" style="font-size:12px">${won
+      ? "Active assets · licences = Asset quantity · $ = annualised (ARR)"
+      : "Open 02–04 New / Add-On / Upgrade line items, this FY · renewals excluded"}</span>
+  </div>`;
+  const d=FP.cache[fpKey()];
+  if(!d){ loadFootprint(); return bar+`<div class="note"><span class="spin"></span> Loading footprint…</div>`; }
+  const err=d.source==="error"?`<div class="err">Footprint query failed: ${esc(d.error||"unknown error")}</div>`:"";
+  const order=d.typeOrder||[];
+  const byType=Object.fromEntries((d.types||[]).map(t=>[t.type,t]));
+  const hk=state.fpHeat, hLab=hk==="usd"?"$":"licences";
+  const tot=d[hk==="usd"?"totalUsd":"totalQty"]||0;
+  const share=x=>tot?((x[hk]||0)/tot):0;
+  const mix=`<div class="fp-mix" title="Mix by ${hLab}">${order.map(t=>{ const x=byType[t]; const p=x?share(x)*100:0;
+    return p>0?`<i style="--tc:${fpColor(t)};width:${p}%" title="${esc(t)}: ${p.toFixed(1)}%"></i>`:""; }).join("")}</div>`;
+  // clicking a card sorts the table by that bucket (high first) on the current heat metric
+  const on=k=>state.sortKey===k?" active":"";
+  const cards=`<div class="fp-types">
+    <div class="card${on(hk)}" data-fpsort="${hk}" title="Sort accounts by total"><h3>Total</h3><div class="big">${fmtQ(d.totalQty)}</div>
+      <div class="sub">licences · <b>${fmtK(d.totalUsd)}</b> ${usdLab} · ${(d.accounts||[]).length} accounts</div></div>
+    ${order.map((t,i)=>{ const x=byType[t]||{qty:0,usd:0,accounts:0}, p=share(x)*100;
+      return `<div class="card${on("t"+i)}" data-fpsort="t${i}" title="Sort accounts by ${esc(t)}" style="--tc:${fpColor(t)}"><h3><span class="tdot"></span>${esc(t)}<span class="pct" style="margin-left:auto">${p.toFixed(0)}%</span></h3>
+        <div class="big">${fmtQ(x.qty)}</div>
+        <div class="sub">licences · <b>${fmtK(x.usd)}</b> · ${x.accounts} acct${x.accounts===1?"":"s"}</div>
+        <div class="share"><i style="width:${p}%"></i></div></div>`; }).join("")}
+  </div>`;
+  // flatten per-type cells onto the row (t0..tN = heat metric) so the generic table can sort them
+  const rows=(d.accounts||[]).map(a=>{ const r={id:a.id, name:a.name, qty:a.qty, usd:a.usd, cells:a.cells||{}};
+    order.forEach((t,i)=>{ r["t"+i]=(r.cells[t]||{})[hk]||0; }); return r; });
+  // heat intensity normalised per type column (sqrt so mid-size cells still show) — keeps small
+  // types like Asset visible next to Field Service instead of washing out on a global scale
+  const colMax=Object.fromEntries(order.map(t=>[t,Math.max(0,...rows.map(r=>(r.cells[t]||{})[hk]||0))]));
+  const cell=t=>(_,r)=>{ const c=r.cells[t]; if(!(c&&(c.qty||c.usd))) return `<div class="hm"><span class="muted">·</span></div>`;
+    const m=colMax[t], k=m?Math.sqrt((c[hk]||0)/m):0, a=0.08+0.62*k;
+    return `<div class="hm${k>0.6?" hot":""}" style="background:${fpRgba(fpColor(t),a)}"><span class="q">${fmtQ(c.qty)}</span><span class="u">${fmtK(c.usd)}</span></div>`; };
+  const acct=(v,r)=>{ const tt=r[hk]||0;
+    return `${esc(v)}<div class="fp-acmix">${tt?order.map(t=>{ const x=(r.cells[t]||{})[hk]||0;
+      return x>0?`<i style="--tc:${fpColor(t)};width:${x/tt*100}%"></i>`:""; }).join(""):""}</div>`; };
+  return bar+err+cards+mix+table(rows,[
+    {k:"name",t:"Account",render:acct},
+    ...order.map((t,i)=>({k:"t"+i,t:`<span class="tdot" style="--tc:${fpColor(t)}"></span>${esc(t)}`,num:true,cls:"fpc",render:cell(t)})),
+    {k:"qty",t:"Licences",num:true,render:v=>`<span class="amt">${fmtQ(v)}</span>`},
+    {k:"usd",t:usdLab,num:true,fmt:fmt},
+  ]);
+}
+function openFootprint(id){
+  const d=FP.cache[fpKey()]; const a=((d&&d.accounts)||[]).find(x=>x.id===id); if(!a) return;
+  const won=state.fpStatus==="won";
+  const prods=(a.products||[]).slice().sort((x,y)=>(y.usd||0)-(x.usd||0)||(y.qty||0)-(x.qty||0));
+  document.getElementById("drawer-inner").innerHTML=`
+    <div class="dh">
+      <h2><a href="${SF.replace('/Opportunity/','/Account/')}${esc(a.id)}/view" target="_blank" rel="noopener">${esc(a.name)} ↗</a></h2>
+      <span class="close" id="dclose">×</span>
+    </div>
+    <div class="body">
+      <div class="kv"><span class="k">View</span><span>${won?"Won (active installed base)":"Open pipeline"} · ${state.fpScope==="mine"?"My accounts":"ANZ"}</span></div>
+      <div class="kv"><span class="k">Licences</span><span class="amt">${fmtQ(a.qty)}</span></div>
+      <div class="kv"><span class="k">${won?"ARR (USD)":"Pipeline (USD)"}</span><span class="amt">${fmt(a.usd)}</span></div>
+      <div class="sect"><h4>Products (${prods.length})</h4>${prods.length?`<table class="ptable"><tr><th>Product</th><th>Type</th>${won?"":"<th>Opportunity</th>"}<th class="num">Qty</th><th class="num">USD</th></tr>${
+        prods.map(p=>`<tr><td>${esc(p.name)}</td><td style="white-space:nowrap"><span class="tdot" style="--tc:${fpColor(p.type)};margin-right:5px"></span>${esc(p.type)}</td>${won?"":`<td>${p.opp?oppLinkId(p.opp.id,p.opp.name)+(p.opp.type==="Upgrade"?` <span class="chip">Upgrade</span>`:""):"—"}</td>`}<td class="num">${fmtQ(p.qty)}</td><td class="num">${fmt(p.usd)}</td></tr>`).join("")
+      }</table>`:`<div class="muted">No products.</div>`}</div>
+    </div>`;
+  document.getElementById("drawer").classList.add("open");
+  document.getElementById("scrim").style.display="block";
+  document.getElementById("dclose").onclick=closeDetail;
+}
+
 function viewActivity(){
   const a=DATA.activity; if(!a) return `<div class="note">No activity data.</div>`;
   const catBy=Object.fromEntries((a.byCategory||[]).map(c=>[c.category,c]));
@@ -978,7 +1107,8 @@ document.getElementById("scrim").onclick=closeDetail;
 document.addEventListener("keydown",e=>{ if(e.key==="Escape") closeDetail(); });
 
 // ---- render ---------------------------------------------------------------
-const VIEWS={open:viewOpen,closed:viewClosed,whitespace:viewWhitespace,coach:viewCoach,activity:viewActivity};
+const VIEWS={open:viewOpen,closed:viewClosed,whitespace:viewWhitespace,coach:viewCoach,activity:viewActivity,
+             footprint:viewFootprint};
 function render(){
   document.getElementById("view").innerHTML=VIEWS[state.tab]();
   const q=document.getElementById("q");
@@ -991,7 +1121,16 @@ function render(){
   });
   document.querySelectorAll("#view tr[data-id]").forEach(tr=>{
     if(!tr.dataset.id) return;
-    tr.onclick=e=>{ if(e.target.tagName==="A") return; openDetail(tr.dataset.id); };
+    tr.onclick=e=>{ if(e.target.tagName==="A") return;
+      (state.tab==="footprint"?openFootprint:openDetail)(tr.dataset.id); };
+  });
+  document.querySelectorAll(".fp-types .card[data-fpsort]").forEach(c=>c.onclick=()=>{
+    state.sortKey=c.dataset.fpsort; state.sortDir=-1; render();
+  });
+  document.querySelectorAll("#fp-scope button, #fp-status button, #fp-heat button").forEach(b=>b.onclick=()=>{
+    const k={"fp-scope":"fpScope","fp-status":"fpStatus","fp-heat":"fpHeat"}[b.parentElement.id];
+    if(state[k]===b.dataset.v) return;
+    state[k]=b.dataset.v; state.sortKey=null; state.sortDir=-1; render();
   });
   const dt=document.getElementById("deadtog");
   if(dt) dt.onchange=e=>{ state.showDead=e.target.checked; render(); };

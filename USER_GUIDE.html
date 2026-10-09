@@ -60,7 +60,7 @@
   <div class="inner">
     <div class="logo">62</div>
     <div>
-      <h1>Org62 Command Center <span style="font-weight:400;opacity:.75;font-size:16px">v1.4</span></h1>
+      <h1>Org62 Command Center <span style="font-weight:400;opacity:.75;font-size:16px">v1.5</span></h1>
       <p>User guide — setup &amp; navigation · a local, read-only dashboard over your own Org62 opportunities</p>
     </div>
   </div>
@@ -199,7 +199,7 @@ cd FieldServiceCommandCenter</code></pre>
   plain read-only Flask dashboard it is. That framing is what makes it approvable here.</div>
 
   <h2 id="navigate">5. Navigating the dashboard</h2>
-  <p>Across the top is a <b>KPI band</b> (headline numbers), and below it <b>five tabs</b>. A status badge
+  <p>Across the top is a <b>KPI band</b> (headline numbers), and below it <b>six tabs</b>. A status badge
   in the header tells you where the data came from: <span class="pill live">live</span> = queried Org62
   just now; <span class="pill snap">snapshot</span> = showing a bundled fallback because the live
   connection wasn't available. The <b>↻ Refresh</b> button re-syncs with Org62 at any time.</p>
@@ -231,7 +231,7 @@ cd FieldServiceCommandCenter</code></pre>
   flagged rows in the Open Pipe table and show a panel underneath explaining exactly which rule flagged
   each one, with live counts; click it again to hide both.</p>
 
-  <h3>The five tabs</h3>
+  <h3>The six tabs</h3>
   <table>
     <tr><th>Tab</th><th>What it shows</th></tr>
     <tr><td><span class="tabname">Open Pipe</span></td>
@@ -252,6 +252,14 @@ cd FieldServiceCommandCenter</code></pre>
         (Customer Facing / Customer Related / Non-customer), dead-deal activity alerts, coverage gaps
         (business deals in your accounts you're not on), time-by-account for the last 14 days, and a
         month-by-month activity calendar — hover a day's activity chip for a full time breakdown.</td></tr>
+    <tr><td><span class="tabname">Product Footprint</span></td>
+        <td>Field Service family licences and dollars per account, grouped by product type (Field
+        Service, Scheduler, Asset, Health Cloud, Contact Center, Add-ons). Two toggles:
+        <b>My accounts / ANZ</b> (“my” = accounts on deals where you have a Deal Contribution) and
+        <b>Won / Pipeline</b>. <b>Won</b> = the active installed base (active Assets), with $ shown as
+        annual recurring revenue; <b>Pipeline</b> = open stage 02–04 New / Add-On Business / Upgrade line items
+        closing this fiscal year (renewals excluded). All $ in USD. Click an account to see its
+        product lines (pipeline rows link to the opportunity).</td></tr>
   </table>
 
   <figure class="shot">
@@ -317,6 +325,14 @@ cd FieldServiceCommandCenter</code></pre>
   <p>What changed between versions, newest first.</p>
   <table>
     <tr><th>Version</th><th>What changed</th></tr>
+    <tr><td><b>v1.5</b><br>9 Oct 2026</td>
+        <td>New <b>Product Footprint</b> tab: licences and USD by product type per account, with
+        My accounts / ANZ and Won (installed base, ARR) / Pipeline toggles. Broadened the FSL product
+        scope used by New Business and the Coach coverage gaps to include Salesforce Scheduler (incl.
+        add-ons), Asset Scheduling, Asset Service Lifecycle Management, Health Cloud Home Health (Remote
+        Caregiver / Field Scheduler), Appointment Assistant, Visual Remote Assistant, and Contact Center
+        Workforce Management / Quality Management. New Business and Footprint Pipeline now also include
+        <b>Upgrade</b> opportunities (edition upgrades with real seat expansion); renewals still excluded.</td></tr>
     <tr><td><b>v1.4</b><br>30 Sep 2026</td>
         <td>New <b>alert bar</b> (renamed from “pipeline bar”): auto-polls Org62 in the background
         (default every 30 min, configurable in Settings) instead of only refreshing on demand — a cheap

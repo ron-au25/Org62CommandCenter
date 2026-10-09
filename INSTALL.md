@@ -173,7 +173,10 @@ The queries assume these Org62 facts (see `CLAUDE.md` for the full list):
 - SE specialist crediting: `Deal_Contribution__c.Opportunity_Role__c` — `'Service Cloud FSL Specialist'`
   or `'Service Cloud SE'`, selected via the Settings (⚙) role-mode toggle in the header.
 - ANZ = `Account.BillingCountry IN ('AU','NZ','Australia','New Zealand')`.
-- "Field Service product" = `OpportunityLineItem` with `Product2.Name LIKE '%Field Service%'`;
+- "Field Service product" = `OpportunityLineItem` with `Product2.Name LIKE '%Field Service%'` or a
+  `-FSL-` / `-WEM-` ProductCode — covers Field Service, Scheduler, Asset Scheduling, ASLM, Health Cloud
+  Home Health (Remote Caregiver / Field Scheduler), Appointment Assistant, Visual Remote Assistant,
+  Workforce Management and Quality Management (full clause in `salesforce.py` `ROLE_MODES`);
   "Service Cloud product" = `LIKE '%Service Cloud%'` or `LIKE '%Agentforce for Service%'`.
 - Fiscal year = Feb 1 – Jan 31 (`CloseDate = THIS_FISCAL_YEAR`).
 - Service AE = `sfbase__OpportunityTeam__c` ("Selling Role" = `'Service Cloud AE'`); Core SE =
@@ -194,6 +197,12 @@ The New Business (ANZ White Space) tab supports **aligned-SE filtering**: enter 
 list of Service AE names you're aligned to in Settings, and the tab highlights/filters whitespace
 opportunities where that Service AE is already engaged, plus adds a "N Aligned ($X)" line to the
 New Business KPI card.
+
+The Product Footprint tab shows Field Service family licences and USD per account by product type,
+toggled My accounts (your Deal Contribution deals) / ANZ and Won / Pipeline. Won = active installed
+base (`Asset Status='Active'`, licences = `Quantity__c`, ARR = qty × `NormalizedMonthlyUnitPrice__c`
+× 12); Pipeline = open 02–04 New/Add-On Business/Upgrade line items this FY (no renewals). Live only, no
+snapshot. See `CLAUDE.md` → "Product Footprint tab".
 
 Settings (role mode, ticker toggle, quarterly targets, aligned-SE list) are saved to
 `web/settings_local.json` (git-ignored, machine-local) via `/api/settings`, so they persist across

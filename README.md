@@ -2,8 +2,8 @@
 
 A local, read-only dashboard over Org62 (Salesforce internal prod) — forecast,
 ANZ Field Service white space, coverage gaps, and activity, scoped to your own
-opportunities. Five tabs: Open Pipe, Closed Pipe, New Business (Whitespace),
-Coach (coverage gaps), Activity Log.
+opportunities. Six tabs: Open Pipe, Closed Pipe, New Business (Whitespace),
+Forecasting Coach, Activity Log, Product Footprint.
 
 See **[USER_GUIDE.html](USER_GUIDE.html)** for a walkthrough of each tab.
 

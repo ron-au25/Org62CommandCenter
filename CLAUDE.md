@@ -1,8 +1,8 @@
 # Org62 Command Center — project instructions
 
 ## What this is
-5-tab web app (Flask) over Org62 (Salesforce internal prod) — Open Pipe, Closed Pipe,
-New Business (Whitespace), Coach (Coverage), Activity Log.
+6-tab web app (Flask) over Org62 (Salesforce internal prod) — Open Pipe, Closed Pipe,
+New Business (Whitespace), Forecasting Coach, Activity Log, Product Footprint.
 Data owner: Ron Shpilman — SE, Field Service, ANZ region.
 
 ## Org62 connection (the durable path)
@@ -26,9 +26,21 @@ Data owner: Ron Shpilman — SE, Field Service, ANZ region.
 - SE specialist crediting: **Deal_Contribution__c**, picklist `Opportunity_Role__c` — two exact literal
   values: `'Service Cloud FSL Specialist'` and `'Service Cloud SE'`. OpportunityTeamMember has no such role.
 - ANZ = `Account.BillingCountry IN ('AU','NZ','Australia','New Zealand')`. Opp region fields unreliable.
-- "Field Service product" = OpportunityLineItem with `Product2.Name LIKE '%Field Service%'`.
+- "Field Service product" (FSL mode) = OpportunityLineItem matching `ROLE_MODES["fsl"]["sku_clause"]`:
+  `Product2.Name LIKE '%Field Service%'` OR `ProductCode LIKE '%-FSL-%'` (Scheduler incl. Additional
+  Appointments add-on, Asset Scheduling, ASLM, Health Cloud - Remote Caregiver = Home Health, Appointment
+  Assistant, Visual Remote Assistant) OR `ProductCode LIKE '%-WEM-%'` (Agentforce Contact Center - Workforce
+  Management), plus name matches for code gaps: `%Salesforce Scheduler%` / `Asset Scheduling%` (GCPD variants
+  have code `CDC`), `Health Cloud - Field Scheduler%` (code HLS-PNM), `%Workforce Management%`,
+  `%Quality Management%` (Contact Center QM — inactive, no pricebook entry, kept for older opps).
+  `FSL` never appears in product *names* except old training SKUs — match it in ProductCode only.
+  Verified via PricebookEntry 2026-10-09; FSL whitespace went 62 → 79 opps.
 - "Service Cloud product" = OpportunityLineItem with `Product2.Name LIKE '%Service Cloud%'` OR
   `LIKE '%Agentforce for Service%'` (18 catalog SKUs, all `...Add-on - <Edition>` variants — no bare SKU).
+- Opportunity.Type in scope for whitespace + footprint pipe: New Business, Add-On Business, **Upgrade**
+  (edition upgrades carry real seat expansion — RTIO GDI Expansion `006ed00000kBbt0AAC` is Type Upgrade,
+  ~42 active FS seats → 954 UE). Excluded: Renewal, Swap (small negative). Coach `coverage_gaps()` still
+  New/Add-On only. Don't infer installed base from a Renewal opp's quote lines — use active Assets.
 - Open pipeline stages of interest: `02%`, `03%`, `04%` (`StageName LIKE`). Exclude closed/dead.
 - Fiscal year: Feb 1 – Jan 31. Current = FY27 (ends 2027-01-31). Use `CloseDate = THIS_FISCAL_YEAR`.
 - SOQL: no field aliasing (only aggregates allow it). OpportunityTeamMember is huge/unindexed — never LIKE-scan it.
@@ -116,7 +128,8 @@ with a pro-rata marker (`currentQuarterProgress.pct`) showing where hours *shoul
 evenly through the quarter, plus the previous quarter's same metric for comparison.
 
 ## Whitespace definition
-ANZ opps, open, stage 02/03/04, has in-scope product (FS or Service Cloud, per role mode),
+ANZ opps, open, stage 02/03/04, `Type IN ('New Business','Add-On Business','Upgrade')`,
+has in-scope product (FS or Service Cloud, per role mode),
 `CloseDate >= TODAY AND = THIS_FISCAL_YEAR`, and NOT IN Deal_Contribution__c where role matches
 the mode. Dead opps excluded.
 
@@ -131,6 +144,30 @@ just returns an empty ticker, not a crash.
 Live rows never bulk-carry `products[]` (would mean an OpportunityLineItem query per row on every
 tab load — too expensive). Fetched lazily instead: `/api/opportunity/<id>/products` →
 `org.opportunity_products()`, called only when the drawer opens for that opp.
+
+## Product Footprint tab
+`/api/footprint?scope=mine|anz&status=won|pipe` → `org.product_footprint()` → `server.flatten_footprint()`.
+Product scope = the FSL `sku_clause`; type bucketing = `server.PRODUCT_TYPES` (first match wins, by
+name/code substring; anything unmatched = "Field Service"). All $ in USD via `convertCurrency()`
+(Ron's user currency is USD; corporate currency is USD).
+- **Won = installed base, not summed closed-won lines.** `Asset WHERE Status='Active'`. Licences =
+  `Asset.Quantity__c` (standard `Quantity` is null on these). `NormalizedMonthlyUnitPrice__c` is
+  monthly per unit; ARR = qty × NMUP × 12. (`TotalPrice__c` = qty × NMUP × term months = TCV — not used.)
+  Large Scheduler allotments are legitimately $0 even on active assets.
+- `AccountProductFootprint__c` exists but was rejected: its `TotalQuantity__c` includes Inactive
+  "Footprint Linked" $0 Scheduler allotments (e.g. NDIA 16k), inflating licences.
+- **Pipe** = OpportunityLineItem, open, stage 02/03/04, `CloseDate >= TODAY AND = THIS_FISCAL_YEAR`,
+  `Type IN ('New Business','Add-On Business','Upgrade')` (Renewal / Swap excluded), $ = `TotalPrice`.
+  Drawer tags Upgrade lines with a chip.
+- **Mine** = Deal_Contribution__c `SE_Name__c = me`: won scopes Assets to those deals' AccountIds
+  (`my_contribution_account_ids()`, batched `IN`); pipe scopes OLIs to those opp Ids (semi-join).
+  **ANZ** = BillingCountry filter. No snapshot fallback — failure returns `source:"error"` + message.
+- Frontend fetches lazily on first view, cached per scope|status in `FP.cache`; Refresh clears it.
+- Visuals: one colour per type (`FP_COLORS`), type cards with % share bar, overall mix bar, per-account
+  mix strip, and heatmap cells (`state.fpHeat` = `$` or licences, client-only — no refetch). Heat is
+  normalised **per type column** with sqrt scaling so small types (Asset, Contact Center) stay visible.
+- Verified 2026-10-09: ANZ won 108,731 licences / $28.7M ARR / 367 accts (matches direct Asset
+  aggregate); Contact Center has 0 ANZ installed base (pipeline only).
 
 ## Run
 - One-shot: `./run.sh` (creates venv, triggers CLI login if needed, starts server). See `INSTALL.md`.

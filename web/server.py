@@ -628,7 +628,7 @@ _poll_state = {
     "last_poll_at": None,   # datetime, UTC
     "changed": False,       # true once, until the next /api/alerts fetch clears it
     "account_ids": set(),
-    "known_opp_ids": set(),
+    "new_opp_since": None,  # datetime, UTC — cutoff for "new opportunity" detection
     "baseline_done": False,
     "error": None,
 }
@@ -638,7 +638,7 @@ def _run_poll():
     now = datetime.now(timezone.utc)
     with _poll_lock:
         account_ids = set(_poll_state["account_ids"])
-        known_ids = set(_poll_state["known_opp_ids"])
+        new_opp_since = _poll_state["new_opp_since"]
         is_first = not _poll_state["baseline_done"]
 
     if not is_first:
@@ -658,10 +658,12 @@ def _run_poll():
     try:
         raw = org.my_pipeline_movements()
         new_account_ids = _account_ids_from_movements(raw)
-        new_opp_records = org.new_opps_in_my_accounts(new_account_ids, known_ids)
+        new_opp_records = []
+        if not is_first:
+            since_iso = new_opp_since.strftime("%Y-%m-%dT%H:%M:%S.000+0000")
+            new_opp_records = org.new_opps_in_my_accounts(new_account_ids, since_iso)
         flat = flatten_movements(raw, new_opps=(None if is_first else new_opp_records))
         items = flat["items"]
-        updated_known = known_ids | {o["Id"] for o in new_opp_records if o.get("Id")}
     except Exception as e:
         with _poll_lock:
             _poll_state["error"] = str(e)
@@ -670,7 +672,7 @@ def _run_poll():
     with _poll_lock:
         _poll_state.update({
             "items": items, "last_poll_at": now, "account_ids": new_account_ids,
-            "known_opp_ids": updated_known, "baseline_done": True,
+            "new_opp_since": now, "baseline_done": True,
             "changed": (not is_first) and bool(items), "error": None,
         })
 
@@ -722,6 +724,91 @@ def api_opportunity_products(opp_id):
         return jsonify({"source": "live", "rows": rows})
     except Exception as e:
         return jsonify({"source": "error", "rows": [], "error": str(e)})
+
+
+# Product Footprint tab: (type, name prefixes/substrings, ProductCode substrings).
+# First match wins — order matters: Health Cloud before Scheduler (its "Field
+# Scheduler" SKU contains "Scheduler") and before Field Service (Remote
+# Caregiver carries an -FSL-TCH code). Anything else in the FSL sku_clause is
+# Field Service core (Dispatcher / Field Technician / Field Service+).
+PRODUCT_TYPES = [
+    ("Health Cloud", ("Health Cloud - Remote Caregiver", "Health Cloud - Field Scheduler"), ()),
+    ("Scheduler", ("Scheduler",), ("-FSL-LS",)),
+    ("Asset", ("Asset Scheduling", "Asset Service Lifecycle"), ("-FSL-AS",)),
+    ("Add-ons", ("Appointment Assistant", "Visual Remote Assistant"), ("-FSL-APT", "-FSL-RTA")),
+    ("Contact Center", ("Workforce Management", "Quality Management"), ("-WEM-",)),
+]
+PRODUCT_TYPE_ORDER = ["Field Service"] + [t for t, _, _ in PRODUCT_TYPES]
+
+
+def _product_type(name, code):
+    name, code = name or "", code or ""
+    for ptype, names, codes in PRODUCT_TYPES:
+        if any(n in name for n in names) or any(c in code for c in codes):
+            return ptype
+    return "Field Service"
+
+
+def flatten_footprint(records, status):
+    """Asset (won) or OpportunityLineItem (pipe) rows -> per-type totals + account matrix.
+
+    won: usd = ARR = Quantity__c x NormalizedMonthlyUnitPrice__c x 12.
+    pipe: usd = line TotalPrice. Both already USD via convertCurrency().
+    """
+    types = {t: {"type": t, "qty": 0, "usd": 0, "accounts": set()} for t in PRODUCT_TYPE_ORDER}
+    accounts = {}
+    for r in records:
+        prod = r.get("Product2") or {}
+        if status == "won":
+            acct_id, acct = r.get("AccountId"), (r.get("Account") or {}).get("Name")
+            qty = _num(r.get("Quantity__c"))
+            usd = qty * _num(r.get("NormalizedMonthlyUnitPrice__c")) * 12
+            opp = None
+        else:
+            o = r.get("Opportunity") or {}
+            acct_id, acct = o.get("AccountId"), (o.get("Account") or {}).get("Name")
+            qty, usd = _num(r.get("Quantity")), _num(r.get("TotalPrice"))
+            opp = {"id": r.get("OpportunityId"), "name": o.get("Name"), "type": o.get("Type")}
+        ptype = _product_type(prod.get("Name"), prod.get("ProductCode"))
+        t = types[ptype]
+        t["qty"] += qty
+        t["usd"] += usd
+        t["accounts"].add(acct_id)
+        a = accounts.setdefault(acct_id, {"id": acct_id, "name": acct, "qty": 0, "usd": 0,
+                                          "cells": {}, "products": {}})
+        a["qty"] += qty
+        a["usd"] += usd
+        cell = a["cells"].setdefault(ptype, {"qty": 0, "usd": 0})
+        cell["qty"] += qty
+        cell["usd"] += usd
+        key = (prod.get("Name"), (opp or {}).get("id"))
+        p = a["products"].setdefault(key, {"name": prod.get("Name"), "type": ptype,
+                                           "qty": 0, "usd": 0, "opp": opp})
+        p["qty"] += qty
+        p["usd"] += usd
+    acct_rows = []
+    for a in accounts.values():
+        a["products"] = sorted(a["products"].values(), key=lambda p: -p["usd"])
+        acct_rows.append(a)
+    acct_rows.sort(key=lambda a: (-a["usd"], -a["qty"]))
+    type_rows = [dict(t, accounts=len(t["accounts"])) for t in types.values()]
+    return {"types": type_rows, "accounts": acct_rows,
+            "totalQty": sum(t["qty"] for t in type_rows),
+            "totalUsd": sum(t["usd"] for t in type_rows)}
+
+
+@app.route("/api/footprint")
+def api_footprint():
+    """Product Footprint tab. ?scope=mine|anz &status=won|pipe (clamped). Live only."""
+    scope = request.args.get("scope") if request.args.get("scope") in ("mine", "anz") else "anz"
+    status = request.args.get("status") if request.args.get("status") in ("won", "pipe") else "won"
+    base = {"scope": scope, "status": status, "typeOrder": PRODUCT_TYPE_ORDER}
+    try:
+        payload = flatten_footprint(org.product_footprint(scope=scope, status=status), status)
+        return jsonify({**base, **payload, "source": "live"})
+    except Exception as e:
+        return jsonify({**base, "types": [], "accounts": [], "totalQty": 0, "totalUsd": 0,
+                        "source": "error", "error": str(e)})
 
 
 if __name__ == "__main__":
