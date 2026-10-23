@@ -251,6 +251,65 @@ class Org62:
         )
         return self.query(soql)
 
+    def closed_missing_contribution(self, mode="fsl"):
+        """Closed-won opps this FY I probably should have a Deal_Contribution__c on.
+
+        Never the contributor (SE_Name__c = me), and either signal holds:
+        - `events`: I logged Event time against the opp (WhatId) this FY.
+        - `account`: it's New/Add-On/Upgrade with an in-scope product (mode's
+          SKU clause) in an account where I'm contributor on another opp this
+          FY — same "active account" rule as coverage_gaps(), but closed.
+        Returns Opportunity rows plus `_reasons` (list) and `_eventMinutes`.
+        """
+        if mode not in ROLE_MODES:
+            raise ValueError(f"Unknown role mode: {mode!r}")
+        sku_clause = ROLE_MODES[mode]["sku_clause"]
+        uid = self.my_user_id()
+        fields = ("Id, Name, Account.Name, AccountId, Amount, CloseDate, StageName, "
+                  "Type, IsWon, Owner.Name, NextStep, Next_Steps__c, SE_Comments__c, "
+                  "SE_Comment_Update_Date__c, SE_Next_Steps__c, Architect_Comments__c, Issues__c")
+        no_dc = (f"AND Id NOT IN (SELECT Opportunity__c FROM Deal_Contribution__c "
+                 f"WHERE SE_Name__c = '{uid}') ")
+        found = {}
+
+        evs = self.query(
+            "SELECT WhatId, DurationInMinutes FROM Event "
+            f"WHERE OwnerId = '{uid}' AND ActivityDate = THIS_FISCAL_YEAR AND What.Type = 'Opportunity'"
+        )
+        minutes = {}
+        for e in evs:
+            if e.get("WhatId"):
+                minutes[e["WhatId"]] = minutes.get(e["WhatId"], 0) + (e.get("DurationInMinutes") or 0)
+        ids = sorted(minutes)
+        for i in range(0, len(ids), 150):
+            chunk = ",".join(f"'{x}'" for x in ids[i:i + 150])
+            for r in self.query(f"SELECT {fields} FROM Opportunity WHERE IsWon = true {no_dc}"
+                                f"AND Id IN ({chunk})"):
+                r["_reasons"] = ["events"]
+                r["_eventMinutes"] = minutes.get(r["Id"], 0)
+                found[r["Id"]] = r
+
+        acct_recs = self.query(
+            "SELECT Opportunity__r.AccountId FROM Deal_Contribution__c "
+            f"WHERE SE_Name__c = '{uid}' AND Opportunity_Close_Date__c = THIS_FISCAL_YEAR"
+        )
+        acct_ids = sorted({(r.get("Opportunity__r") or {}).get("AccountId")
+                           for r in acct_recs if (r.get("Opportunity__r") or {}).get("AccountId")})
+        for i in range(0, len(acct_ids), 150):
+            chunk = ",".join(f"'{a}'" for a in acct_ids[i:i + 150])
+            for r in self.query(
+                f"SELECT {fields} FROM Opportunity WHERE AccountId IN ({chunk}) AND IsWon = true "
+                "AND Type IN ('New Business','Add-On Business','Upgrade') AND CloseDate = THIS_FISCAL_YEAR "
+                f"AND Id IN (SELECT OpportunityId FROM OpportunityLineItem WHERE {sku_clause}) {no_dc}"
+            ):
+                if r["Id"] in found:
+                    found[r["Id"]]["_reasons"].append("account")
+                else:
+                    r["_reasons"] = ["account"]
+                    r["_eventMinutes"] = minutes.get(r["Id"], 0)
+                    found[r["Id"]] = r
+        return list(found.values())
+
     def anz_fsl_whitespace(self, mode="fsl"):
         """ANZ opportunities with no specialist of the given `mode` engaged.
 

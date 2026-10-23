@@ -463,6 +463,16 @@ def api_whitespace():
             row["serviceAE"] = ae_by_opp.get(row.get("id"))
         payload = _payload(rows, "live")
         payload["roleMode"] = mode
+        try:
+            cm = flatten_closed_missing(org.closed_missing_contribution(mode=mode))
+            cm_ids = [row["id"] for row in cm if row.get("id")]
+            cm_ae, cm_se = _se_ae_by_opp(cm_ids)
+            for row in cm:
+                row["coreSE"] = cm_se.get(row.get("id"))
+                row["serviceAE"] = cm_ae.get(row.get("id"))
+            payload["closedMissing"] = cm
+        except Exception:
+            payload["closedMissing"] = []
         return jsonify(payload)
     except Exception as e:
         snap = _snapshot("snapshot_whitespace.json")
@@ -480,6 +490,26 @@ def flatten_gaps(records):
         rows.append({"id": o.get("Id"), "name": o.get("Name"), "account": acct.get("Name"),
                      "amount": o.get("Amount"), "close": o.get("CloseDate"),
                      "stage": o.get("StageName"), "type": o.get("Type"), "owner": owner.get("Name")})
+    rows.sort(key=lambda r: -(r.get("amount") or 0))
+    return rows
+
+
+def flatten_closed_missing(records):
+    """Closed-won opps missing my Deal_Contribution -> flat rows with reason tags ($0 dropped)."""
+    rows = []
+    for o in records:
+        if not (o.get("Amount") or 0) > 0:
+            continue
+        acct = o.get("Account") or {}
+        owner = o.get("Owner") or {}
+        rows.append({"id": o.get("Id"), "name": o.get("Name"), "account": acct.get("Name"),
+                     "amount": o.get("Amount"), "close": o.get("CloseDate"),
+                     "stage": o.get("StageName"), "type": o.get("Type"),
+                     "owner": owner.get("Name"),
+                     "seNotes": _se_notes(o),
+                     "aeNotes": {"nextStep": o.get("NextStep") or o.get("Next_Steps__c")},
+                     "reasons": o.get("_reasons") or [],
+                     "eventMinutes": o.get("_eventMinutes") or 0})
     rows.sort(key=lambda r: -(r.get("amount") or 0))
     return rows
 

@@ -410,7 +410,7 @@ async function saveSettings(){
 let state = { tab:"open", q:"", sortKey:null, sortDir:-1, showDead:false, actMonth:null,
               roleMode:"fsl", showAlerts:true, pollMinutes:30, targets:{relatedHrs:250, facingHrs:125},
               alignedSEs:"", showAlignedOnly:false, riskHighlight:false,
-              fpScope:"anz", fpStatus:"won", fpHeat:"usd" };
+              fpScope:"anz", fpStatus:"won", fpHeat:"usd", showClosedMissing:false };
 // Product Footprint data, cached per "scope|status" and fetched lazily on first view
 // (not part of fetchAll — the installed-base query is heavier than the other tabs).
 const FP = { cache:{}, loading:null };
@@ -746,9 +746,24 @@ function viewClosed(){
 function viewWhitespace(){
   const rows=(DATA.whitespace?.rows)||[];
   const alignedN=rows.filter(isAligned).length;
+  const cm=(DATA.whitespace?.closedMissing)||[];
   const head=`<div class="bar">
     <label class="toggle"><input type="checkbox" id="aligntog" ${state.showAlignedOnly?"checked":""}> Show only aligned (${alignedN})</label>
+    <label class="toggle"><input type="checkbox" id="cmtog" ${state.showClosedMissing?"checked":""}> Closed won, no deal contribution logged (${cm.length})</label>
   </div>`;
+  if(state.showClosedMissing){
+    const tot=cm.reduce((s,x)=>s+(x.amount||0),0);
+    return head+`<div class="muted" style="margin:6px 0">Closed won this FY · ${fmtK(tot)} · you're not the SE contributor, and either you logged event time on it or it's an in-scope New/Add-On/Upgrade in an account you contribute on.</div>`+
+      table(cm,[
+        {k:"amount",t:"Amount",num:true,fmt:fmt},
+        {k:"account",t:"Account"},
+        {k:"name",t:"Opportunity",render:(_,r)=>oppLink(r)},
+        {k:"type",t:"Type",render:v=>`<span class="chip">${esc(v)}</span>`},
+        {k:"reasons",t:"Why",render:(_,r)=>(r.reasons.includes("events")?`<span class="chip">Logged ${hrs1(r.eventMinutes)} h</span> `:"")+(r.reasons.includes("account")?`<span class="chip">Your account</span>`:"")},
+        {k:"owner",t:"Owner (AE)"},
+        {k:"close",t:"Close Date",cls:"close",render:fmtDate},
+      ]);
+  }
   const shown=state.showAlignedOnly?rows.filter(isAligned):rows;
   return head + table(shown,[
     {k:"amount",t:"Amount",num:true,fmt:fmt},
@@ -1049,7 +1064,8 @@ function table(rows, cols, rowClass){
 
 // ---- detail drawer --------------------------------------------------------
 function findRow(id){
-  return ((DATA.forecast?.rows)||[]).find(r=>r.id===id) || ((DATA.whitespace?.rows)||[]).find(r=>r.id===id);
+  return ((DATA.forecast?.rows)||[]).find(r=>r.id===id) || ((DATA.whitespace?.rows)||[]).find(r=>r.id===id)
+    || ((DATA.whitespace?.closedMissing)||[]).find(r=>r.id===id);
 }
 function noteBlock(lbl,txt){ return txt?`<div class="notebox"><div class="lbl">${lbl}</div>${esc(txt)}</div>`:""; }
 function openDetail(id){
@@ -1134,6 +1150,8 @@ function render(){
   });
   const dt=document.getElementById("deadtog");
   if(dt) dt.onchange=e=>{ state.showDead=e.target.checked; render(); };
+  const cmt=document.getElementById("cmtog");
+  if(cmt) cmt.onchange=e=>{ state.showClosedMissing=e.target.checked; render(); };
   const at=document.getElementById("aligntog");
   if(at) at.onchange=e=>{ state.showAlignedOnly=e.target.checked; render(); };
   const cp=document.getElementById("cal-prev"), cn=document.getElementById("cal-next");
