@@ -128,10 +128,11 @@ with a pro-rata marker (`currentQuarterProgress.pct`) showing where hours *shoul
 evenly through the quarter, plus the previous quarter's same metric for comparison.
 
 ## Whitespace definition
-ANZ opps, open, stage 02/03/04, `Type IN ('New Business','Add-On Business','Upgrade')`,
+ANZ opps, open, stage 01/02/03/04, `Type IN ('New Business','Add-On Business','Upgrade')`,
 has in-scope product (FS or Service Cloud, per role mode),
 `CloseDate >= TODAY AND = THIS_FISCAL_YEAR`, and NOT IN Deal_Contribution__c where role matches
-the mode. Dead opps excluded.
+the mode, and I'm not already on the deal (no `Deal_Contribution__c.SE_Name__c` = me, no
+`OpportunityTeamMember` row for me). Dead opps excluded.
 
 ## Pipeline movements bar (Settings gear → show/hide)
 `/api/movements` → `salesforce.my_pipeline_movements()` (raw OpportunityHistory + recent

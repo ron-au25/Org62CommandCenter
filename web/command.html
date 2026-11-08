@@ -325,7 +325,7 @@
 <aside id="drawer"><div id="drawer-inner"></div></aside>
 
 <script>
-const APP_VERSION = "1.5";
+const APP_VERSION = "1.6";
 const SF = "https://org62.lightning.force.com/lightning/r/Opportunity/";
 const STALE_DAYS = 90;
 const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
@@ -621,8 +621,8 @@ function renderKPIs(){
   const aligned=wsRows.filter(isAligned);
   const alignedTotal=aligned.reduce((s,r)=>s+(r.amount||0),0);
   const kpis=[
-    {lab:"Closed Won (FY27)", val:fmtK(closedWon), meta:won.length+" deals won", tab:"closed"},
     {lab:"Open Pipeline",     val:fmtK(pipeline),  meta:open.length+" open opps", tab:"open"},
+    {lab:"Closed Won (FY27)", val:fmtK(closedWon), meta:won.length+" deals won", tab:"closed"},
     {lab:"Pipeline at Risk",  val:fmtK(atRisk),    meta:risk.length+" flagged", cls:"risk", key:"risk"},
     {lab:"New Business (ANZ)",val:fmtK(DATA.whitespace?.total),
      meta:(DATA.whitespace?.count||0)+" white-space opps<br>"+aligned.length+" Aligned ("+fmtK(alignedTotal)+")", tab:"whitespace"},

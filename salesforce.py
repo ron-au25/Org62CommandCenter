@@ -315,7 +315,7 @@ class Org62:
 
         Verified against Org62:
         - ANZ = Account.BillingCountry in AU/NZ (Opp region fields unreliable).
-        - open + stages 02/03/04, closing between today and end of this FY.
+        - open + stages 01/02/03/04, closing between today and end of this FY.
         - business only: Type in New Business / Add-On Business / Upgrade
           (skip Renewal / Swap / SOW / Success Plan / Transfer). Upgrade kept
           because edition upgrades carry real seat expansion (e.g. RTIO GDI
@@ -323,6 +323,8 @@ class Org62:
         - whitespace = no Deal_Contribution__c with Opportunity_Role__c
           matching the mode's role (this is the real "deal contribution"
           object; OpportunityTeamMember has no such role in its picklist).
+        - excluded when I'm already on the deal: my user is SE_Name__c on any
+          Deal_Contribution__c, or any OpportunityTeamMember, for the opp.
         - `mode="fsl"` (default): Field Service product, role
           'Service Cloud FSL Specialist'. `mode="service_cloud"`: Service
           Cloud / Agentforce for Service product, role 'Service Cloud SE'.
@@ -331,6 +333,7 @@ class Org62:
             raise ValueError(f"Unknown role mode: {mode!r}")
         sku_clause = ROLE_MODES[mode]["sku_clause"]
         role = ROLE_MODES[mode]["role"]
+        uid = self.my_user_id()
         soql = (
             "SELECT Id, Name, StageName, CloseDate, Amount, "
             "Account.Name, Account.BillingCountry, Owner.Name, NextStep, "
@@ -338,7 +341,7 @@ class Org62:
             "Architect_Comments__c, Issues__c, Next_Steps__c, LastActivityDate "
             "FROM Opportunity "
             "WHERE IsClosed = false "
-            "AND (StageName LIKE '02%' OR StageName LIKE '03%' OR StageName LIKE '04%') "
+            "AND (StageName LIKE '01%' OR StageName LIKE '02%' OR StageName LIKE '03%' OR StageName LIKE '04%') "
             "AND CloseDate >= TODAY AND CloseDate = THIS_FISCAL_YEAR "
             "AND Type IN ('New Business','Add-On Business','Upgrade') "
             "AND Account.BillingCountry IN ('AU','NZ','Australia','New Zealand') "
@@ -347,7 +350,16 @@ class Org62:
             f"WHERE Opportunity_Role__c = '{role}') "
             "ORDER BY Amount DESC NULLS LAST"
         )
-        return self.query(soql)
+        # My name already on the deal = not whitespace. Filtered here, not in
+        # SOQL: Org62 allows max 2 semi-join sub-selects and the product +
+        # role clauses above already use both.
+        mine = {r["Opportunity__c"] for r in self.query(
+            f"SELECT Opportunity__c FROM Deal_Contribution__c WHERE SE_Name__c = '{uid}'"
+        )}
+        mine |= {r["OpportunityId"] for r in self.query(
+            f"SELECT OpportunityId FROM OpportunityTeamMember WHERE UserId = '{uid}'"
+        )}
+        return [r for r in self.query(soql) if r["Id"] not in mine]
 
     def my_pipeline_movements(self):
         """Raw ingredients for the rolling pipeline-movements bar.
