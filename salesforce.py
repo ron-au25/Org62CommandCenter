@@ -471,7 +471,7 @@ class Org62:
         for batch in _chunks(sorted(account_ids), _ID_BATCH):
             ids = ",".join(f"'{a}'" for a in batch)
             soql = (
-                "SELECT Id, Name, Account.Name, CreatedDate FROM Opportunity "
+                "SELECT Id, Name, Account.Name, StageName, CloseDate, Owner.Name, CreatedDate FROM Opportunity "
                 f"WHERE AccountId IN ({ids}) AND CreatedDate > {since_iso}"
             )
             out.extend(self.query(soql))

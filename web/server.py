@@ -634,12 +634,17 @@ def flatten_movements(data, new_opps=None, days=30):
             "amount": amount_block, "stage": stage_block, "comment": bool(rec["comment_date"]), "kind": kind,
         })
 
+    seen = {i["id"] for i in items}
     for o in (new_opps or []):
+        if o.get("Id") in seen:  # already shown as a movement card
+            continue
         acct = o.get("Account") or {}
         items.append({
             "id": o.get("Id"), "opp": o.get("Name"), "account": acct.get("Name"),
             "date": o.get("CreatedDate") or "", "amount": None, "stage": None,
             "comment": False, "kind": "new_opp",
+            "stageName": o.get("StageName"), "close": o.get("CloseDate"),
+            "owner": (o.get("Owner") or {}).get("Name"),
         })
 
     items.sort(key=lambda x: x["date"], reverse=True)
@@ -652,6 +657,7 @@ def flatten_movements(data, new_opps=None, days=30):
 # tab/refresh reads this cache instead of triggering its own Org62 query —
 # that's what actually bounds Org62 traffic to one poll per interval no
 # matter how many tabs are open.
+NEW_OPP_DAYS = 3  # how long a new opportunity stays in the alert bar
 _poll_lock = threading.Lock()
 _poll_state = {
     "items": [],
@@ -688,11 +694,12 @@ def _run_poll():
     try:
         raw = org.my_pipeline_movements()
         new_account_ids = _account_ids_from_movements(raw)
-        new_opp_records = []
-        if not is_first:
-            since_iso = new_opp_since.strftime("%Y-%m-%dT%H:%M:%S.000+0000")
-            new_opp_records = org.new_opps_in_my_accounts(new_account_ids, since_iso)
-        flat = flatten_movements(raw, new_opps=(None if is_first else new_opp_records))
+        # Rolling window (not "since last poll", not skipped on first run): otherwise a
+        # restart drops existing new-opp alerts and each poll evicts the previous poll's.
+        from datetime import timedelta
+        since_iso = (now - timedelta(days=NEW_OPP_DAYS)).strftime("%Y-%m-%dT%H:%M:%S.000+0000")
+        new_opp_records = org.new_opps_in_my_accounts(new_account_ids, since_iso)
+        flat = flatten_movements(raw, new_opps=new_opp_records)
         items = flat["items"]
     except Exception as e:
         with _poll_lock:

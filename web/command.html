@@ -71,6 +71,8 @@
             font-size:11.5px; white-space:nowrap; cursor:pointer; }
   .alertchip:hover { background:rgba(76,159,254,.08); }
   .alertchip .acc { font-weight:700; max-width:150px; overflow:hidden; text-overflow:ellipsis; }
+  .alertchip .oppnm { max-width:180px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:11px; }
+  .alertchip .oppnm a { color:var(--accent2); text-decoration:none; }
   .alertchip .mv-row { display:flex; gap:6px; }
   .alertchip .delta { font-weight:700; }
   .mv-up { color:var(--good); }
@@ -515,6 +517,7 @@ function alertChip(x,i){
   if(x.kind==="new_opp") deltas.push(`<span class="delta mv-up">New</span>`);
   return `<div class="alertchip" data-i="${i}">
     <div class="acc">${esc(x.account)||"—"}</div>
+    <div class="oppnm">${x.id?`<a href="${SF}${x.id}/view" target="_blank" rel="noopener">${esc(x.opp)||"Opportunity"} ↗</a>`:esc(x.opp)}</div>
     <div class="mv-row">${deltas.join("")}</div>
   </div>`;
 }
@@ -550,11 +553,12 @@ function jumpToOpenRow(id){
     hideTip();
   });
   track.addEventListener("click", e=>{
+    if(e.target.closest("a")) return; // opp-name link opens Salesforce itself
     const chip=e.target.closest(".alertchip"); if(!chip) return;
     const x=alertItems[+chip.dataset.i]; if(!x || !x.id) return;
     hideTip();
     openDetail(x.id);
-    jumpToOpenRow(x.id);
+    if(x.kind!=="new_opp") jumpToOpenRow(x.id);
   });
 })();
 
@@ -1065,7 +1069,13 @@ function table(rows, cols, rowClass){
 // ---- detail drawer --------------------------------------------------------
 function findRow(id){
   return ((DATA.forecast?.rows)||[]).find(r=>r.id===id) || ((DATA.whitespace?.rows)||[]).find(r=>r.id===id)
-    || ((DATA.whitespace?.closedMissing)||[]).find(r=>r.id===id);
+    || ((DATA.whitespace?.closedMissing)||[]).find(r=>r.id===id)
+    || alertRow(id);
+}
+// alert items (e.g. brand-new opps) aren't in any tab's rows -> synthesize a minimal row for the drawer
+function alertRow(id){
+  const x=((DATA.alerts?.items)||[]).find(a=>a.id===id); if(!x) return null;
+  return {id:x.id, name:x.opp, account:x.account, stage:x.stageName, close:x.close, owner:x.owner};
 }
 function noteBlock(lbl,txt){ return txt?`<div class="notebox"><div class="lbl">${lbl}</div>${esc(txt)}</div>`:""; }
 function openDetail(id){
